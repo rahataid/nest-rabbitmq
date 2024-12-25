@@ -29,9 +29,9 @@ async function bootstrap() {
     defaultVersion: '1',
   });
   // Custom Exception Filter
-  app.useGlobalFilters(new CustomExceptionFilter());
+  // app.useGlobalFilters(new CustomExceptionFilter());
   // set Global Guard
-  app.useGlobalGuards(new AuthGuard(reflector));
+  // app.useGlobalGuards(new AuthGuard(reflector));
   // Api Docs
   setupSwagger(app);
   await app.listen(port, '0.0.0.0');

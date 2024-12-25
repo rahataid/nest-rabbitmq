@@ -46,3 +46,14 @@ deletedAt     DateTime?
 @@map("users")
 }
 
+
+model Beneficiary {
+  id String @id @default(uuid())
+  name String
+  email String @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@map("beneficiaries")
+}

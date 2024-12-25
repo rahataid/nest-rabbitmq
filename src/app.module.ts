@@ -5,6 +5,10 @@ import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { MailModule } from './mailer/mailer.module';
 import { UsersModule } from './users/users.module';
+import { RabbitMQModule } from './rabbitmq/rabbitmq.module';
+import { AMQP_CONNECTION, queueOptions } from './constants';
+import { WorkerModule } from './rabbitmq/worker.module';
+import { BeneficiaryWorker } from './beneficiary.rabbitmq.worker';
 
 @Module({
   imports: [
@@ -23,6 +27,15 @@ import { UsersModule } from './users/users.module';
     PrismaModule,
     MailModule,
     UsersModule,
+    RabbitMQModule.register({
+      workerModuleProvider: WorkerModule.register([
+        { provide: 'BeneficiaryWorker1', useClass: BeneficiaryWorker },
+        { provide: 'BeneficiaryWorker2', useClass: BeneficiaryWorker },
+      ]),
+      ampqProviderName: AMQP_CONNECTION,
+      urls: ['amqp://guest:guest@localhost'],
+      queues: queueOptions,
+    }),
   ],
 })
 export class AppModule {}
