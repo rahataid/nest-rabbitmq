@@ -1,7 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfirmChannel } from 'amqplib';
 import { QueueUtilsService } from './queue-utils.service';
-import { Subject } from 'rxjs';
 import { RabbitMQModuleOptions } from './types';
 
 export interface BatchItem<T> {
@@ -47,10 +46,11 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
     });
 
     try {
+      const prefetchCount = this.calculateOptimalPrefetch();
       this.logger.log(
-        `${this.queueName} - Worker ID: ${this.workerId} - Setting prefetch to ${this.defaultBatchSize}.`,
+        `${this.queueName} - Worker ID: ${this.workerId} - Setting prefetch count to ${prefetchCount}`,
       );
-      await this.channel.prefetch(this.defaultBatchSize);
+      await this.channel.prefetch(prefetchCount); // Dynamically set prefetch count
 
       const queueArgsMatch = await this.ensureQueueArguments();
 
@@ -66,6 +66,12 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
       );
 
       let batch: BatchItem<T>[] = [];
+
+      //create the queueu dead_letter_queue
+      await this.channel.assertQueue('dead_letter_queue', {
+        durable: true,
+        arguments: this.queueArguments,
+      });
 
       await this.channel.consume(this.queueName, async message => {
         if (message) {
@@ -100,11 +106,16 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
     }
   }
 
+  private calculateOptimalPrefetch(): number {
+    // Dynamically calculate optimal prefetch count based on available resources
+    const prefetch = Math.max(10, Math.floor(Number(process.env.MAX_PREFETCH) || 20)); // Example dynamic calculation
+    this.logger.log(`Optimal prefetch count calculated: ${prefetch}`);
+    return prefetch;
+  }
+
   private async ensureQueueArguments(): Promise<boolean> {
     try {
       const existingArgs = this.queueArguments;
-
-      console.log('first', this.queueArguments);
 
       if (JSON.stringify(existingArgs) !== JSON.stringify(this.queueArguments)) {
         this.logger.error(
@@ -157,27 +168,50 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
 
   private async processBatch(batch: BatchItem<T>[]): Promise<void> {
     for (const item of batch) {
-      try {
-        this.logger.log(
-          `${this.queueName} - Worker ID: ${this.workerId} - Processing item: ${JSON.stringify(
-            item.data,
-          )}.`,
-        );
-        await this.processItem([item.data]);
-        this.channel.ack(item.message);
-        this.logger.log(
-          `${this.queueName} - Worker ID: ${this.workerId} - Message processed and acknowledged: .`,
-        );
-      } catch (error) {
-        this.logger.error(
-          `${this.queueName} - Worker ID: ${
-            this.workerId
-          } - Error processing message, requeuing: ${JSON.stringify(item.data)}`,
-          error,
-        );
-        this.channel.nack(item.message, false, true);
+      let retryCount = 0;
+      const maxRetries = 3;
+
+      while (retryCount < maxRetries) {
+        try {
+          this.logger.log(
+            `${this.queueName} - Worker ID: ${this.workerId} - Processing item: ${JSON.stringify(
+              item.data,
+            )}.`,
+          );
+          await this.processItem([item.data]);
+          this.channel.ack(item.message);
+          this.logger.log(
+            `${this.queueName} - Worker ID: ${this.workerId} - Message processed and acknowledged.`,
+          );
+          break; // Exit the loop if successful
+        } catch (error) {
+          retryCount++;
+          this.logger.error(
+            `${this.queueName} - Worker ID: ${this.workerId} - Error processing message, retrying... (Attempt ${retryCount}/${maxRetries})`,
+            error,
+          );
+
+          if (retryCount >= maxRetries) {
+            this.logger.error(
+              `${this.queueName} - Worker ID: ${this.workerId} - Max retries reached. Moving message to DLQ.`,
+            );
+            // Publish to Dead Letter Queue (DLQ) logic
+            await this.publishToDLQ(item);
+            this.channel.nack(item.message, false, false); // Do not requeue
+          } else {
+            // Exponential backoff for retry
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+            this.channel.nack(item.message, false, true); // Requeue for retry
+          }
+        }
       }
     }
+  }
+
+  private async publishToDLQ(item: BatchItem<T>) {
+    // Publish failed message to DLQ
+    this.logger.log(`Publishing failed message to Dead Letter Queue: ${JSON.stringify(item)}`);
+    await this.channel.sendToQueue('dead_letter_queue', Buffer.from(JSON.stringify(item.data)));
   }
 
   protected abstract processItem(items: T | T[]): Promise<void>;
@@ -187,5 +221,16 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
     this.logger.warn(
       `${this.queueName} - Worker ID: ${this.workerId} shutting down. Remaining workers: ${BaseWorker.workerCount}`,
     );
+
+    // Properly close channel and connection
+    if (this.channel) {
+      this.channel.close();
+      this.logger.log(`Channel for worker ${this.workerId} closed.`);
+    }
+
+    if (this.amqpConnection) {
+      this.amqpConnection.close();
+      this.logger.log(`Connection for worker ${this.workerId} closed.`);
+    }
   }
 }

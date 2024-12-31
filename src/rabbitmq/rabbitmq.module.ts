@@ -11,12 +11,13 @@ import * as amqp from 'amqp-connection-manager';
 import { QueueUtilsService } from './queue-utils.service';
 import { RabbitMQController } from './rabbitmq.controller';
 import { RabbitMQService } from './rabbitmq.service';
+import { DataProviderConfig } from './types';
 
 @Global()
 @Module({
   imports: [],
   providers: [],
-  exports: [RabbitMQService, 'QUEUE_NAMES'], // Export QUEUE_NAMES globally
+  exports: [RabbitMQService, 'QUEUE_NAMES'],
 })
 export class RabbitMQModule implements OnModuleInit, OnModuleDestroy {
   static register(options: {
@@ -35,9 +36,11 @@ export class RabbitMQModule implements OnModuleInit, OnModuleDestroy {
       useFactory: () => amqp.connect(options.urls, options?.connectionOptions),
     };
 
+    // const dataProviderModule = DataProviderModule.register(options.dataProviderConfig || {});
+
     return {
       module: RabbitMQModule,
-      imports: [options.workerModuleProvider],
+      imports: [options.workerModuleProvider].filter(Boolean),
       controllers: [RabbitMQController],
       providers: [
         amqpProvider,
@@ -47,8 +50,15 @@ export class RabbitMQModule implements OnModuleInit, OnModuleDestroy {
           provide: 'QUEUE_NAMES',
           useValue: options.queues,
         },
+        // ...dataProviderModule.providers,
       ],
-      exports: [amqpProvider, QueueUtilsService, RabbitMQService, 'QUEUE_NAMES'], // Ensure QUEUE_NAMES is exported
+      exports: [
+        amqpProvider,
+        QueueUtilsService,
+        RabbitMQService,
+        'QUEUE_NAMES',
+        // ...dataProviderModule.providers,
+      ],
     };
   }
 

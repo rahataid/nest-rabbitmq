@@ -1,18 +1,12 @@
-import { Global, Inject, Injectable, OnModuleInit } from '@nestjs/common';
-import { AmqpConnectionManager, ChannelWrapper } from 'amqp-connection-manager';
-import { QueueUtilsService } from './rabbitmq/queue-utils.service';
-import { BaseWorker } from './rabbitmq/worker.base';
-import { PrismaService } from 'src/prisma/prisma.service';
-import { AMQP_CONNECTION, BENEFICIARY_QUEUE } from 'src/constants';
+import { Global, Inject, Injectable } from '@nestjs/common';
 import { Beneficiary } from '@prisma/client';
-import * as amqp from 'amqplib';
-import { RabbitMQModuleOptions } from './rabbitmq/types';
-import { getQueueByName } from './rabbitmq/utils';
-//  async onModuleInit(): Promise<void> {
-//     this.logger.warn(
-//       `BaseWorker initialized but the "${this.queueName}" worker has not been initialized. You should not see this message. Please initialize the worker.`,
-//     );
-//   }
+import { AmqpConnectionManager, ChannelWrapper } from 'amqp-connection-manager';
+import { AMQP_CONNECTION, BENEFICIARY_QUEUE } from 'src/constants';
+import { API_URL, DATA_PROVIDER } from 'src/rabbitmq/dataproviders/dataprovider.module';
+import { QueueUtilsService } from '../../rabbitmq/queue-utils.service';
+import { IDataProvider, RabbitMQModuleOptions } from '../../rabbitmq/types';
+import { getQueueByName } from '../../rabbitmq/utils';
+import { BaseWorker } from '../../rabbitmq/worker.base';
 
 @Global()
 @Injectable()
@@ -21,11 +15,11 @@ export class BeneficiaryWorker extends BaseWorker<Beneficiary> {
   constructor(
     @Inject(AMQP_CONNECTION) private readonly connection: AmqpConnectionManager,
     queueUtilsService: QueueUtilsService,
-    private readonly prisma: PrismaService,
+    @Inject(DATA_PROVIDER) private readonly dataProvider: IDataProvider,
     @Inject('QUEUE_NAMES') private readonly queuesToSetup: RabbitMQModuleOptions['queues'],
+    @Inject(API_URL) private readonly apiUrl: string,
   ) {
     const queue = getQueueByName(queuesToSetup, BENEFICIARY_QUEUE);
-    console.log('queue', queue);
     super(queueUtilsService, BENEFICIARY_QUEUE, 10, 'batch', connection, queue.options.arguments);
   }
 
@@ -35,6 +29,8 @@ export class BeneficiaryWorker extends BaseWorker<Beneficiary> {
         json: true,
         setup: async channel => {
           await this.initializeWorker(channel);
+          console.log('this.data', this.dataProvider);
+          console.log('this.apiUrl', this.apiUrl);
         },
       });
     } catch (err) {
@@ -55,7 +51,9 @@ export class BeneficiaryWorker extends BaseWorker<Beneficiary> {
       // });
 
       //Pause a worker for 10 seconds
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 10000));
+      console.log('this.dataProvider', this.dataProvider);
+      await this.dataProvider.saveList(beneficiaries);
 
       this.logger.log('Batch successfully processed and saved to the database.');
     } catch (error) {

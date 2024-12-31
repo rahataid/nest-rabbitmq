@@ -55,6 +55,7 @@
     "amqp-connection-manager": "^4.1.14",
     "amqplib": "^0.10.5",
     "async-mutex": "^0.5.0",
+    "axios": "^1.7.9",
     "bull": "^4.10.4",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",

@@ -45,16 +45,16 @@ export class RabbitMQService {
         try {
           await this.channelWrapper.addSetup(async (channel: ConfirmChannel) => {
             await channel.assertQueue(queue, { durable: true });
-            // batch.forEach(msg => {
-            channel.sendToQueue(
-              queue,
-              Buffer.from(JSON.stringify({ data: batch, batchSize, batchIndex: i })),
-              {
-                persistent: true,
-                ...queueOptions,
-              },
-            );
-            // });
+            batch.forEach(msg => {
+              channel.sendToQueue(
+                queue,
+                Buffer.from(JSON.stringify({ data: msg, batchSize, batchIndex: i })),
+                {
+                  persistent: true,
+                  ...queueOptions,
+                },
+              );
+            });
           });
         } catch (error) {
           this.logger.error(`Failed to publish batch to queue ${queue}:`, error);
