@@ -12,7 +12,7 @@ export interface BatchItem<T> {
 export abstract class BaseWorker<T> implements OnModuleDestroy {
   protected readonly logger = new Logger(this.constructor.name);
   private channel: ConfirmChannel;
-  private dlqChannel: ConfirmChannel; // Separate DLQ channel
+  private dlqChannel: ConfirmChannel; // Separate DLQ channel for failed messages
   private static workerCount = 0;
   private readonly workerId: number;
   private readonly queueName: string;
@@ -64,7 +64,7 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
 
       this.logger.log(`${this.queueName} - Worker ID: ${this.workerId} - Queue is ready.`);
 
-      // Initialize DLQ channel
+      // Initialize a separate channel for the DLQ
       this.dlqChannel = await this.amqpConnection.createChannel();
       await this.dlqChannel.assertQueue('dead_letter_queue', { durable: true });
 
@@ -155,15 +155,17 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
     for (const item of batch) {
       let retryCount = 0;
       const maxRetries = 3;
+      let success = false;
 
       while (retryCount < maxRetries) {
         try {
           await this.processItem([item.data]);
-          this.channel.ack(item.message);
+          this.channel.ack(item.message); // Acknowledge successful processing
           this.logger.log(
             `${this.queueName} - Worker ID: ${this.workerId} - Message processed and acknowledged.`,
           );
-          break;
+          success = true;
+          break; // Exit the retry loop on success
         } catch (error) {
           retryCount++;
           this.logger.error(
@@ -175,13 +177,25 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
             this.logger.error(
               `${this.queueName} - Worker ID: ${this.workerId} - Max retries reached. Moving message to DLQ.`,
             );
-            await this.publishToDLQ(item);
-            this.channel.nack(item.message, false, false);
+            try {
+              await this.publishToDLQ(item); // Attempt to publish to DLQ
+              this.channel.ack(item.message); // Acknowledge to avoid re-processing
+            } catch (dlqError) {
+              this.logger.error(
+                `${this.queueName} - Worker ID: ${this.workerId} - Failed to publish to DLQ. Message will remain unacknowledged.`,
+                dlqError,
+              );
+            }
           } else {
             await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
-            this.channel.nack(item.message, false, true);
           }
         }
+      }
+
+      if (!success && retryCount >= maxRetries) {
+        this.logger.warn(
+          `${this.queueName} - Worker ID: ${this.workerId} - Message failed after retries and DLQ attempt.`,
+        );
       }
     }
   }
