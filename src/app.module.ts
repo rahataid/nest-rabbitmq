@@ -32,6 +32,7 @@ import { BeneficiaryWorker } from './workers/beneficiary/beneficiary.rabbitmq.wo
       workerModuleProvider: WorkerModule.register({
         globalDataProvider: {
           prismaService: PrismaService,
+          // apiUrl
           //   // dataProvider: BeneficiaryPrismaProvider, // Global data provider
         },
         workers: [
@@ -55,10 +56,21 @@ import { BeneficiaryWorker } from './workers/beneficiary/beneficiary.rabbitmq.wo
             // workerDataProvider: BeneficiaryPrismaProvider, // Passing
             // ApiProvider to the worker
           },
+          {
+            provide: 'BeneficiaryWorker3',
+            // apiUrl: 'http://localhost:3333',
+            // prismaService: PrismaService,
+
+            useClass: BeneficiaryWorker,
+            // workerDataProvider: BeneficiaryApiProvider,
+            // workerDataProvider: BeneficiaryPrismaProvider, // Passing
+            // ApiProvider to the worker
+          },
         ],
       }),
       ampqProviderName: AMQP_CONNECTION,
-      urls: ['amqp://guest:guest@localhost'],
+      urls: [process.env.RABBIT_MQ_URL],
+      // urls: ['amqp://guest:guest@localhost'],
       queues: queueOptions,
     }),
   ],
