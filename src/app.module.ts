@@ -45,6 +45,16 @@ import { BeneficiaryWorker } from './workers/beneficiary/beneficiary.rabbitmq.wo
             // workerDataProvider: BeneficiaryPrismaProvider, // Passing
             // ApiProvider to the worker
           },
+          {
+            provide: 'BeneficiaryWorker2',
+            // apiUrl: 'http://localhost:3333',
+            // prismaService: PrismaService,
+
+            useClass: BeneficiaryWorker,
+            // workerDataProvider: BeneficiaryApiProvider,
+            // workerDataProvider: BeneficiaryPrismaProvider, // Passing
+            // ApiProvider to the worker
+          },
         ],
       }),
       ampqProviderName: AMQP_CONNECTION,

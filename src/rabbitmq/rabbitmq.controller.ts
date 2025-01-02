@@ -16,7 +16,7 @@ export class RabbitMQController {
       .fill(data)
       .map((item, index) => ({
         name: item.name + index,
-        email: `email@${index}.com`,
+        email: `email@${index + Math.random()}.com`,
       }));
     console.log('dataBatched', dataBatched);
     await this.rabbitMQService.publishBatchToQueue(BENEFICIARY_QUEUE, dataBatched, 100);

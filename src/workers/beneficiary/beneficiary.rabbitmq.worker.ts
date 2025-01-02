@@ -12,6 +12,7 @@ import { IDataProvider, RabbitMQModuleOptions } from '../../rabbitmq/types';
 import { getQueueByName } from '../../rabbitmq/utils';
 import { BaseWorker } from '../../rabbitmq/worker.base';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { RpcException } from '@nestjs/microservices';
 
 @Global()
 @Injectable()
@@ -59,7 +60,11 @@ export class BeneficiaryWorker extends BaseWorker<Beneficiary> {
 
       //Pause a worker for 10 seconds
       // await new Promise(resolve => setTimeout(resolve, 10000));
-      await this.prisma.beneficiary.createMany({ data: beneficiaries });
+      await this.prisma.beneficiary.createMany({ data: beneficiaries }).catch(err => {
+        console.log('Error', err);
+        new RpcException(err);
+        throw err;
+      });
       // console.log('this.dataProvider', this.dataProvider);
       // await this.dataProvider.saveList(beneficiaries);
 
