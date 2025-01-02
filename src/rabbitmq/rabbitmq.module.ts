@@ -11,7 +11,6 @@ import * as amqp from 'amqp-connection-manager';
 import { QueueUtilsService } from './queue-utils.service';
 import { RabbitMQController } from './rabbitmq.controller';
 import { RabbitMQService } from './rabbitmq.service';
-import { DataProviderConfig } from './types';
 
 @Global()
 @Module({

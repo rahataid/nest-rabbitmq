@@ -1,6 +1,7 @@
-import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
+import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { PrismaService } from 'nestjs-prisma';
 import { AuthModule } from './auth/auth.module';
 import { AMQP_CONNECTION, queueOptions } from './constants';
 import { MailModule } from './mailer/mailer.module';
@@ -9,9 +10,6 @@ import { RabbitMQModule } from './rabbitmq/rabbitmq.module';
 import { WorkerModule } from './rabbitmq/worker.module';
 import { UsersModule } from './users/users.module';
 import { BeneficiaryWorker } from './workers/beneficiary/beneficiary.rabbitmq.worker';
-import { BeneficiaryApiProvider } from './workers/beneficiary/beneficiary.api.provider';
-import { PrismaService } from 'nestjs-prisma';
-import { BeneficiaryPrismaProvider } from './workers/beneficiary/beneficiary.prisma.provider';
 
 @Module({
   imports: [
@@ -33,24 +31,19 @@ import { BeneficiaryPrismaProvider } from './workers/beneficiary/beneficiary.pri
     RabbitMQModule.register({
       workerModuleProvider: WorkerModule.register({
         globalDataProvider: {
-          apiUrl: 'http://localhost:3333',
           prismaService: PrismaService,
-          dataProvider: BeneficiaryPrismaProvider, // Global data provider
+          //   // dataProvider: BeneficiaryPrismaProvider, // Global data provider
         },
         workers: [
           {
             provide: 'BeneficiaryWorker1',
             // apiUrl: 'http://localhost:3333',
+            // prismaService: PrismaService,
 
             useClass: BeneficiaryWorker,
-            // workerDataProvider: BeneficiaryApiProvider, // Passing
+            // workerDataProvider: BeneficiaryApiProvider,
+            // workerDataProvider: BeneficiaryPrismaProvider, // Passing
             // ApiProvider to the worker
-          },
-          {
-            provide: 'BeneficiaryWorker2',
-            useClass: BeneficiaryWorker,
-            // workerDataProvider: BeneficiaryPrismaProvider, // Passing PrismaProvider to the worker
-            // prismaService: PrismaService,
           },
         ],
       }),

@@ -1,5 +1,4 @@
 // src/rabbitmq/dataproviders/dataprovider.module.ts
-
 import { DynamicModule, Global, Module, Provider } from '@nestjs/common';
 import { v4 as uuid } from 'uuid';
 
@@ -13,8 +12,8 @@ export class DataProviderModule {
   static register(
     config: {
       apiUrl?: string;
-      dataProvider?: any; // e.g., BeneficiaryApiProvider or BeneficiaryPrismaProvider
-      prismaService?: any; // e.g., a PrismaService instance
+      dataProvider?: any; // e.g., BeneficiaryApiProvider
+      prismaService?: any; // e.g., an instance
     },
     forcedToken?: string,
   ): DynamicModule {
@@ -37,12 +36,10 @@ export class DataProviderModule {
     }
 
     if (config.dataProvider) {
-      // Provide under a unique token
       providers.push({
         provide: uniqueToken,
         useClass: config.dataProvider,
       });
-      // Also map the universal DATA_PROVIDER -> same instance
       providers.push({
         provide: DATA_PROVIDER,
         useExisting: uniqueToken,

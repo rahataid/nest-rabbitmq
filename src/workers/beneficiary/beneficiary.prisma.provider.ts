@@ -11,8 +11,10 @@ export class BeneficiaryPrismaProvider implements IDataProvider {
   getItem: (id: string) => Promise<any>;
   getList: () => Promise<any[]>;
   saveItem: (item: any) => Promise<void>;
-  saveList(list: any[]) {
-    console.log('PrismaProvider saveList', list);
-    return this.prisma.beneficiary.createMany({ data: list });
+  async saveList(list: any[]) {
+    console.log('PrismaProvider saveList', JSON.stringify(this.prisma, null, 2));
+    const saved = await this.prisma.beneficiary.createMany({ data: list });
+    console.log('first', saved);
+    return saved;
   }
 }

@@ -12,9 +12,10 @@ export interface BatchItem<T> {
 export abstract class BaseWorker<T> implements OnModuleDestroy {
   protected readonly logger = new Logger(this.constructor.name);
   private channel: ConfirmChannel;
-  private static workerCount = 0; // Track active worker instances
+  private dlqChannel: ConfirmChannel; // Separate DLQ channel
+  private static workerCount = 0;
   private readonly workerId: number;
-  private readonly queueName: string; // Declare queueName here
+  private readonly queueName: string;
 
   constructor(
     protected readonly queueUtilsService: QueueUtilsService,
@@ -28,7 +29,7 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
     BaseWorker.workerCount++;
     this.workerId = BaseWorker.workerCount;
     this.logger.log(
-      `${this.queueName} - Worker instance created. ${this.queueName} - Worker ID: ${this.workerId}. Total workers: ${BaseWorker.workerCount}`,
+      `${this.queueName} - Worker instance created. Worker ID: ${this.workerId}. Total workers: ${BaseWorker.workerCount}`,
     );
   }
 
@@ -50,28 +51,24 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
       this.logger.log(
         `${this.queueName} - Worker ID: ${this.workerId} - Setting prefetch count to ${prefetchCount}`,
       );
-      await this.channel.prefetch(prefetchCount); // Dynamically set prefetch count
+      await this.channel.prefetch(prefetchCount);
 
       const queueArgsMatch = await this.ensureQueueArguments();
 
       if (!queueArgsMatch) {
         this.logger.error(
-          `${this.queueName} - Worker ID: ${this.workerId} - Queue arguments conflict detected. Manual intervention required.`,
+          `${this.queueName} - Worker ID: ${this.workerId} - Queue arguments conflict detected.`,
         );
         return;
       }
 
-      this.logger.log(
-        `${this.queueName} - Worker ID: ${this.workerId} - Queue ${this.queueName} is ready.`,
-      );
+      this.logger.log(`${this.queueName} - Worker ID: ${this.workerId} - Queue is ready.`);
+
+      // Initialize DLQ channel
+      this.dlqChannel = await this.amqpConnection.createChannel();
+      await this.dlqChannel.assertQueue('dead_letter_queue', { durable: true });
 
       let batch: BatchItem<T>[] = [];
-
-      //create the queueu dead_letter_queue
-      await this.channel.assertQueue('dead_letter_queue', {
-        durable: true,
-        arguments: this.queueArguments,
-      });
 
       await this.channel.consume(this.queueName, async message => {
         if (message) {
@@ -86,7 +83,7 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
 
           if (batch.length >= this.defaultBatchSize || this.acknowledgeMode === 'individual') {
             const currentBatch = [...batch];
-            batch = []; // Reset batch
+            batch = [];
             this.logger.log(
               `${this.queueName} - Worker ID: ${this.workerId} - Processing batch of size: ${currentBatch.length}.`,
             );
@@ -95,20 +92,17 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
         }
       });
 
-      this.logger.log(
-        `${this.queueName} - Worker ID: ${this.workerId} - Worker initialized and consuming messages from ${this.queueName}`,
-      );
+      this.logger.log(`${this.queueName} - Worker ID: ${this.workerId} - Worker initialized.`);
     } catch (error) {
       this.logger.error(
-        `${this.queueName} - Worker ID: ${this.workerId} - Error initializing worker for queue ${this.queueName}:`,
+        `${this.queueName} - Worker ID: ${this.workerId} - Error initializing worker:`,
         error,
       );
     }
   }
 
   private calculateOptimalPrefetch(): number {
-    // Dynamically calculate optimal prefetch count based on available resources
-    const prefetch = Math.max(10, Math.floor(Number(process.env.MAX_PREFETCH) || 20)); // Example dynamic calculation
+    const prefetch = Math.max(10, Math.floor(Number(process.env.MAX_PREFETCH) || 20));
     this.logger.log(`Optimal prefetch count calculated: ${prefetch}`);
     return prefetch;
   }
@@ -128,16 +122,13 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
 
         if (process.env.FORCE_QUEUE_RESET === 'true') {
           this.logger.warn(
-            `${this.queueName} - Worker ID: ${this.workerId} - Force resetting queue due to argument conflicts.`,
+            `${this.queueName} - Worker ID: ${this.workerId} - Force resetting queue.`,
           );
           await this.channel.deleteQueue(this.queueName);
           await this.channel.assertQueue(this.queueName, {
             durable: true,
             arguments: this.queueArguments,
           });
-          this.logger.log(
-            `${this.queueName} - Worker ID: ${this.workerId} - Queue "${this.queueName}" recreated successfully.`,
-          );
           return true;
         }
 
@@ -145,21 +136,15 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
       }
 
       this.logger.log(
-        `${this.queueName} - Worker ID: ${this.workerId} - Queue "${this.queueName}" exists with matching arguments.`,
+        `${this.queueName} - Worker ID: ${this.workerId} - Queue exists with matching arguments.`,
       );
       return true;
     } catch (error) {
       if (error.message.includes('NOT_FOUND')) {
-        this.logger.warn(
-          `${this.queueName} - Worker ID: ${this.workerId} - Queue "${this.queueName}" not found. Creating...`,
-        );
         await this.channel.assertQueue(this.queueName, {
           durable: true,
           arguments: this.queueArguments,
         });
-        this.logger.log(
-          `${this.queueName} - Worker ID: ${this.workerId} - Queue "${this.queueName}" created successfully.`,
-        );
         return true;
       }
       throw error;
@@ -173,21 +158,16 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
 
       while (retryCount < maxRetries) {
         try {
-          this.logger.log(
-            `${this.queueName} - Worker ID: ${this.workerId} - Processing item: ${JSON.stringify(
-              item.data,
-            )}.`,
-          );
           await this.processItem([item.data]);
           this.channel.ack(item.message);
           this.logger.log(
             `${this.queueName} - Worker ID: ${this.workerId} - Message processed and acknowledged.`,
           );
-          break; // Exit the loop if successful
+          break;
         } catch (error) {
           retryCount++;
           this.logger.error(
-            `${this.queueName} - Worker ID: ${this.workerId} - Error processing message, retrying... (Attempt ${retryCount}/${maxRetries})`,
+            `${this.queueName} - Worker ID: ${this.workerId} - Error processing message. Retrying... (Attempt ${retryCount}/${maxRetries})`,
             error,
           );
 
@@ -195,13 +175,11 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
             this.logger.error(
               `${this.queueName} - Worker ID: ${this.workerId} - Max retries reached. Moving message to DLQ.`,
             );
-            // Publish to Dead Letter Queue (DLQ) logic
             await this.publishToDLQ(item);
-            this.channel.nack(item.message, false, false); // Do not requeue
+            this.channel.nack(item.message, false, false);
           } else {
-            // Exponential backoff for retry
             await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
-            this.channel.nack(item.message, false, true); // Requeue for retry
+            this.channel.nack(item.message, false, true);
           }
         }
       }
@@ -209,9 +187,21 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
   }
 
   private async publishToDLQ(item: BatchItem<T>) {
-    // Publish failed message to DLQ
-    this.logger.log(`Publishing failed message to Dead Letter Queue: ${JSON.stringify(item)}`);
-    await this.channel.sendToQueue('dead_letter_queue', Buffer.from(JSON.stringify(item.data)));
+    try {
+      await this.dlqChannel.sendToQueue(
+        'dead_letter_queue',
+        Buffer.from(JSON.stringify(item.data)),
+      );
+      this.logger.log(
+        `${this.queueName} - Worker ID: ${this.workerId} - Message published to DLQ.`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `${this.queueName} - Worker ID: ${this.workerId} - Failed to publish to DLQ:`,
+        error,
+      );
+      throw error;
+    }
   }
 
   protected abstract processItem(items: T | T[]): Promise<void>;
@@ -222,10 +212,14 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
       `${this.queueName} - Worker ID: ${this.workerId} shutting down. Remaining workers: ${BaseWorker.workerCount}`,
     );
 
-    // Properly close channel and connection
     if (this.channel) {
       this.channel.close();
       this.logger.log(`Channel for worker ${this.workerId} closed.`);
+    }
+
+    if (this.dlqChannel) {
+      this.dlqChannel.close();
+      this.logger.log(`DLQ channel for worker ${this.workerId} closed.`);
     }
 
     if (this.amqpConnection) {
