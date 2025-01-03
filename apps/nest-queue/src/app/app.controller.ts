@@ -3,7 +3,7 @@ import { AppService } from './app.service';
 import { BENEFICIARY_QUEUE } from '../constants';
 import { RabbitMQService } from '@rumsan/nest-rabbitmq';
 
-@Controller()
+@Controller('app')
 export class AppController {
   constructor(
     private readonly appService: AppService,
