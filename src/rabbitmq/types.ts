@@ -1,4 +1,4 @@
-import { DynamicModule, ForwardReference, Type } from '@nestjs/common';
+import { DynamicModule, ForwardReference, ModuleMetadata, Type } from '@nestjs/common';
 import * as amqp from 'amqp-connection-manager';
 
 export type RabbitMQModuleOptions = {
@@ -66,3 +66,22 @@ export interface WorkerFactoryDefinition {
  * Union type: a worker can EITHER be class-based OR factory-based.
  */
 export type WorkerDefinition = WorkerClassDefinition | WorkerFactoryDefinition;
+
+export interface QueueDefinition {
+  name: string;
+  durable: boolean;
+  options?: amqp.Options.AssertQueue;
+}
+
+export interface RabbitMQRegisterOptions extends ModuleMetadata {
+  urls: string[];
+  queues: QueueDefinition[];
+  connectionOptions?: amqp.AmqpConnectionManagerOptions;
+  ampqProviderName?: string;
+
+  /**
+   * The module that sets up workers
+   * (DynamicModule, Type, Promise<DynamicModule>, or ForwardReference)
+   */
+  workerModuleProvider?: DynamicModule | Type<any> | Promise<DynamicModule> | ForwardReference<any>;
+}

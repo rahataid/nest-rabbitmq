@@ -10,6 +10,7 @@ import { RabbitMQModule } from './rabbitmq/rabbitmq.module';
 import { WorkerModule } from './rabbitmq/worker.module';
 import { UsersModule } from './users/users.module';
 import { BeneficiaryWorker } from './workers/beneficiary/beneficiary.rabbitmq.worker';
+import { RabbitMQController } from './rabbitmq/rabbitmq.controller';
 
 @Module({
   imports: [
@@ -29,48 +30,28 @@ import { BeneficiaryWorker } from './workers/beneficiary/beneficiary.rabbitmq.wo
     MailModule,
     UsersModule,
     RabbitMQModule.register({
+      controllers: [RabbitMQController],
       workerModuleProvider: WorkerModule.register({
         globalDataProvider: {
           prismaService: PrismaService,
-          // apiUrl
-          //   // dataProvider: BeneficiaryPrismaProvider, // Global data provider
         },
         workers: [
           {
             provide: 'BeneficiaryWorker1',
-            // apiUrl: 'http://localhost:3333',
-            // prismaService: PrismaService,
-
             useClass: BeneficiaryWorker,
-            // workerDataProvider: BeneficiaryApiProvider,
-            // workerDataProvider: BeneficiaryPrismaProvider, // Passing
-            // ApiProvider to the worker
           },
           {
             provide: 'BeneficiaryWorker2',
-            // apiUrl: 'http://localhost:3333',
-            // prismaService: PrismaService,
-
             useClass: BeneficiaryWorker,
-            // workerDataProvider: BeneficiaryApiProvider,
-            // workerDataProvider: BeneficiaryPrismaProvider, // Passing
-            // ApiProvider to the worker
           },
           {
             provide: 'BeneficiaryWorker3',
-            // apiUrl: 'http://localhost:3333',
-            // prismaService: PrismaService,
-
             useClass: BeneficiaryWorker,
-            // workerDataProvider: BeneficiaryApiProvider,
-            // workerDataProvider: BeneficiaryPrismaProvider, // Passing
-            // ApiProvider to the worker
           },
         ],
       }),
       ampqProviderName: AMQP_CONNECTION,
       urls: [process.env.RABBIT_MQ_URL],
-      // urls: ['amqp://guest:guest@localhost'],
       queues: queueOptions,
     }),
   ],
