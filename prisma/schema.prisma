@@ -10,19 +10,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-generator dbml {
-  provider            = "prisma-dbml-generator"
-  output              = "./dbml"
-  outputName          = "seed-model.dbml"
-  projectName         = "SEED 2.0"
-  projectDatabaseType = "PostgreSQL"
-  projectNote         = "SEED 2.0"
-}
+// generator dbml {
+//   provider            = "prisma-dbml-generator"
+//   output              = "./dbml"
+//   outputName          = "seed-model.dbml"
+//   projectName         = "SEED 2.0"
+//   projectDatabaseType = "PostgreSQL"
+//   projectNote         = "SEED 2.0"
+// }
 
-generator docs {
-  provider = "node node_modules/prisma-docs-generator"
-  output   = "./docs"
-}
+// generator docs {
+//   provider = "node node_modules/prisma-docs-generator"
+//   output   = "./docs"
+// }
 
 enum Role {
   ADMIN
@@ -41,7 +41,7 @@ isBlocked     Boolean      @default(false)
 lastLoggedIn  DateTime?    @default(now())
 createdAt     DateTime     @default(now())
 updatedAt     DateTime     @updatedAt
-deletedAt     DateTime?  
+deletedAt     DateTime?
 
 @@map("users")
 }

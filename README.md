@@ -41,10 +41,7 @@ Messages are processed in batches, reducing the overhead associated with handlin
   const batch = messages.slice(i, i + batchSize);
   await this.channelWrapper.addSetup(async (channel: ConfirmChannel) => {
     await channel.assertQueue(queue, { durable: true });
-    channel.sendToQueue(
-      queue,
-      Buffer.from(JSON.stringify({ data: batch, batchSize, batchIndex: i })),
-    );
+    channel.sendToQueue(queue, Buffer.from(JSON.stringify({ data: batch, batchSize, batchIndex: i })));
   });
   ```
 
@@ -149,14 +146,7 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
   private readonly workerId: number;
   private readonly queueName: string;
 
-  constructor(
-    protected readonly queueUtilsService: QueueUtilsService,
-    queueName: string,
-    private readonly defaultBatchSize = 10,
-    private readonly acknowledgeMode: 'individual' | 'batch' = 'individual',
-    private readonly amqpConnection: any,
-    private readonly queueArguments: RabbitMQModuleOptions['queues'][0]['options']['arguments'] = {},
-  ) {
+  constructor(protected readonly queueUtilsService: QueueUtilsService, queueName: string, private readonly defaultBatchSize = 10, private readonly acknowledgeMode: 'individual' | 'batch' = 'individual', private readonly amqpConnection: any, private readonly queueArguments: RabbitMQModuleOptions['queues'][0]['options']['arguments'] = {}) {
     this.queueName = queueName;
     BaseWorker.workerCount++;
     this.workerId = BaseWorker.workerCount;
@@ -166,22 +156,18 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
   async initializeWorker(channel: ConfirmChannel): Promise<void> {
     this.channel = channel;
     this.channel.on('close', async () => {
-      this.logger.warn(
-        `${this.queueName} - Worker ID: ${this.workerId} - Channel closed. Reinitializing...`,
-      );
+      this.logger.warn(`${this.queueName} - Worker ID: ${this.workerId} - Channel closed. Reinitializing...`);
     });
 
     try {
-      this.logger.log(
-        `${this.queueName} - Worker ID: ${this.workerId} - Setting prefetch to ${this.defaultBatchSize}`,
-      );
+      this.logger.log(`${this.queueName} - Worker ID: ${this.workerId} - Setting prefetch to ${this.defaultBatchSize}`);
       await this.channel.prefetch(this.defaultBatchSize);
 
       const queueArgsMatch = await this.ensureQueueArguments();
       if (!queueArgsMatch) return;
 
       let batch: BatchItem<T>[] = [];
-      await this.channel.consume(this.queueName, async message => {
+      await this.channel.consume(this.queueName, async (message) => {
         if (message) {
           const content = JSON.parse(message.content.toString());
           batch.push({ data: content, message });
@@ -201,9 +187,7 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
     try {
       const existingArgs = this.queueArguments;
       if (JSON.stringify(existingArgs) !== JSON.stringify(this.queueArguments)) {
-        this.logger.error(
-          `${this.queueName} - Worker ID: ${this.workerId} - Queue arguments conflict detected.`,
-        );
+        this.logger.error(`${this.queueName} - Worker ID: ${this.workerId} - Queue arguments conflict detected.`);
         return false;
       }
       return true;
