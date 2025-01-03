@@ -1,9 +1,22 @@
 # See http://help.github.com/ignore-files/ for more about ignoring files.
+# rumsan
+.env
+.env.*
+!.env.example
+!.env.setup.example
+play
+.npmrc
 
 # compiled output
 dist
 tmp
-out-tsc
+/out-tsc
+/tools/dev-tools/data
+/tools/config
+.nx
+.verdaccio
+
+dist
 
 # dependencies
 node_modules
@@ -33,10 +46,24 @@ npm-debug.log
 yarn-error.log
 testem.log
 /typings
+config/
 
 # System Files
 .DS_Store
 Thumbs.db
 
 .nx/cache
-.nx/workspace-data
+
+# Local
+docker-compose.yaml
+combine.log
+error.log
+
+accounts.json
+
+# hardhat
+cache
+typechain-types
+
+# bruno-testcase
+temp

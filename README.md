@@ -1,101 +1,242 @@
-# NestQueue
+# RabbitMQ Worker Integration in NestJS
 
-<a alt="Nx logo" href="https://nx.dev" target="_blank" rel="noreferrer"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-logo.png" width="45"></a>
+## Overview
 
-✨ Your new, shiny [Nx workspace](https://nx.dev) is ready ✨.
+This repository provides a robust integration for managing RabbitMQ workers in a NestJS application. The system handles message queues, batch processing, worker lifecycle management, and error handling in a scalable, flexible manner. The core components of this setup include dynamic worker registration, message processing in batches, and queue management using `amqp-connection-manager` and `amqplib`.
 
-[Learn more about this workspace setup and its capabilities](https://nx.dev/nx-api/nest?utm_source=nx_project&amp;utm_medium=readme&amp;utm_campaign=nx_projects) or run `npx nx graph` to visually explore what was created. Now, let's get you up to speed!
+### Key Features:
 
-## Run tasks
+- **Dynamic Worker Registration**: Register multiple workers dynamically to process different RabbitMQ queues.
+- **Batch Processing**: Process messages in batches to improve throughput and reduce overhead.
+- **Error Handling and Acknowledgment**: Ensure reliable message delivery with automatic acknowledgment and error handling.
+- **Queue Management**: Automatically assert queues and validate their configurations.
+- **Channel Prefetching**: Optimize resource usage by controlling how many messages the worker should prefetch at once.
 
-To run the dev server for your app, use:
+---
 
-```sh
-npx nx serve nest-queue
+## Optimizations and Design Choices
+
+### 1. **Dynamic Worker Registration**:
+
+The system uses a dynamic registration approach to add and remove workers without modifying the core logic. This flexibility allows you to scale the application by adding workers to handle different queues as needed.
+
+- **Code Example**:
+
+  ```typescript
+  WorkerModule.register([
+    { provide: 'BeneficiaryWorker1', useClass: BeneficiaryWorker },
+    { provide: 'BeneficiaryWorker2', useClass: BeneficiaryWorker },
+  ]);
+  ```
+
+- **Benefit**: This design allows you to add new queues or workers easily, enhancing the system's flexibility and scalability.
+
+### 2. **Batch Processing**:
+
+Messages are processed in batches, reducing the overhead associated with handling messages individually. By grouping messages, batch processing optimizes throughput and decreases the number of network operations and acknowledgments.
+
+- **Code Example**:
+
+  ```typescript
+  const batch = messages.slice(i, i + batchSize);
+  await this.channelWrapper.addSetup(async (channel: ConfirmChannel) => {
+    await channel.assertQueue(queue, { durable: true });
+    channel.sendToQueue(queue, Buffer.from(JSON.stringify({ data: batch, batchSize, batchIndex: i })));
+  });
+  ```
+
+- **Benefit**: Processing multiple messages together reduces network latency and improves overall performance.
+
+### 3. **Error Handling and Acknowledgment**:
+
+The worker system ensures that if a message fails to be processed, it is requeued for retry. By using `ack` and `nack`, messages are acknowledged only when processed successfully, while failed messages can be requeued for future processing.
+
+- **Code Example**:
+
+  ```typescript
+  this.channel.ack(item.message); // Acknowledge successful processing
+  this.channel.nack(item.message, false, true); // Requeue failed messages
+  ```
+
+- **Benefit**: This guarantees reliable message delivery and minimizes message loss in case of errors.
+
+### 4. **Queue Argument Validation**:
+
+The system checks if the queue arguments match the expected configuration using `ensureQueueArguments`. If a conflict is detected, the queue is reset, or manual intervention is flagged.
+
+- **Code Example**:
+
+  ```typescript
+  const existingArgs = this.queueArguments;
+  if (JSON.stringify(existingArgs) !== JSON.stringify(this.queueArguments)) {
+    // Handle conflict and reset queue if necessary
+  }
+  ```
+
+- **Benefit**: This ensures that workers always work with the correct queue configurations, reducing the chances of misbehaving queues.
+
+### 5. **Channel Prefetching**:
+
+Prefetching is implemented to limit the number of messages fetched by a worker at once, helping manage resource usage effectively.
+
+- **Code Example**:
+
+  ```typescript
+  await this.channel.prefetch(this.defaultBatchSize); // Limit the number of messages fetched
+  ```
+
+- **Benefit**: Ensures workers are not overwhelmed with too many messages and helps distribute processing more evenly.
+
+### 6. **Queue Setup and Initialization**:
+
+Queues are set up only once during worker initialization, which reduces unnecessary reinitialization and ensures the worker can start processing immediately.
+
+- **Benefit**: Reduces startup time and ensures that workers are ready to consume messages as soon as they are launched.
+
+---
+
+## Flow Diagram
+
+```plaintext
+  +-------------------+        +-------------------------+
+  | Worker Module     |        | RabbitMQ Service        |
+  | (Dynamic Register)|------->| (Publish/Consume Logic) |
+  +-------------------+        +-------------------------+
+            |
+            v
+  +--------------------------+
+  | Beneficiary Worker       |
+  | (Batch Processing Logic) |
+  +--------------------------+
+            |
+            v
+  +-----------------------+
+  | Queue Management      |
+  | (Setup, Acknowledgment)|
+  +-----------------------+
+            |
+            v
+  +----------------------------+
+  | Channel Prefetching        |
+  | (Efficient Resource Use)   |
+  +----------------------------+
 ```
 
-To create a production bundle:
+---
 
-```sh
-npx nx build nest-queue
+## BaseWorker Class
+
+The `BaseWorker` class provides an abstract base for all workers, encapsulating the common logic for interacting with RabbitMQ. It handles message consumption, batch processing, queue setup, and error handling. This design reduces code duplication and ensures that all workers follow a consistent pattern.
+
+### Key Features of `BaseWorker`:
+
+1. **Queue Initialization**: Ensures queues are set up correctly with the required arguments.
+2. **Batch Message Consumption**: Consumes messages from queues in batches, improving throughput and reducing latency.
+3. **Error Handling**: Acknowledges or requeues messages based on whether they were successfully processed.
+4. **Worker Lifecycle Management**: Manages initialization, message consumption, and graceful shutdown of workers.
+5. **Logging**: Provides detailed logs for monitoring and troubleshooting.
+
+#### Code Example:
+
+```typescript
+export abstract class BaseWorker<T> implements OnModuleDestroy {
+  protected readonly logger = new Logger(this.constructor.name);
+  private channel: ConfirmChannel;
+  private static workerCount = 0;
+  private readonly workerId: number;
+  private readonly queueName: string;
+
+  constructor(protected readonly queueUtilsService: QueueUtilsService, queueName: string, private readonly defaultBatchSize = 10, private readonly acknowledgeMode: 'individual' | 'batch' = 'individual', private readonly amqpConnection: any, private readonly queueArguments: RabbitMQModuleOptions['queues'][0]['options']['arguments'] = {}) {
+    this.queueName = queueName;
+    BaseWorker.workerCount++;
+    this.workerId = BaseWorker.workerCount;
+    this.logger.log(`${this.queueName} - Worker ID: ${this.workerId} created.`);
+  }
+
+  async initializeWorker(channel: ConfirmChannel): Promise<void> {
+    this.channel = channel;
+    this.channel.on('close', async () => {
+      this.logger.warn(`${this.queueName} - Worker ID: ${this.workerId} - Channel closed. Reinitializing...`);
+    });
+
+    try {
+      this.logger.log(`${this.queueName} - Worker ID: ${this.workerId} - Setting prefetch to ${this.defaultBatchSize}`);
+      await this.channel.prefetch(this.defaultBatchSize);
+
+      const queueArgsMatch = await this.ensureQueueArguments();
+      if (!queueArgsMatch) return;
+
+      let batch: BatchItem<T>[] = [];
+      await this.channel.consume(this.queueName, async (message) => {
+        if (message) {
+          const content = JSON.parse(message.content.toString());
+          batch.push({ data: content, message });
+          if (batch.length >= this.defaultBatchSize || this.acknowledgeMode === 'individual') {
+            const currentBatch = [...batch];
+            batch = [];
+            await this.processBatch(currentBatch);
+          }
+        }
+      });
+    } catch (error) {
+      this.logger.error(`${this.queueName} - Worker ID: ${this.workerId} - Error:`, error);
+    }
+  }
+
+  private async ensureQueueArguments(): Promise<boolean> {
+    try {
+      const existingArgs = this.queueArguments;
+      if (JSON.stringify(existingArgs) !== JSON.stringify(this.queueArguments)) {
+        this.logger.error(`${this.queueName} - Worker ID: ${this.workerId} - Queue arguments conflict detected.`);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      this.logger.error(`Error ensuring queue arguments:`, error);
+      return false;
+    }
+  }
+
+  private async processBatch(batch: BatchItem<T>[]): Promise<void> {
+    for (const item of batch) {
+      try {
+        await this.processItem([item.data]);
+        this.channel.ack(item.message);
+      } catch (error) {
+        this.channel.nack(item.message, false, true);
+      }
+    }
+  }
+
+  protected abstract processItem(items: T | T[]): Promise<void>;
+
+  onModuleDestroy() {
+    BaseWorker.workerCount--;
+    this.logger.warn(`${this.queueName} - Worker ID: ${this.workerId} shutting down.`);
+  }
+}
 ```
 
-To see all available targets to run for a project, run:
+---
 
-```sh
-npx nx show project nest-queue
-```
+## Pros and Cons of the Methods Used
 
-These targets are either [inferred automatically](https://nx.dev/concepts/inferred-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or defined in the `project.json` or `package.json` files.
+### Pros:
 
-[More about running tasks in the docs &raquo;](https://nx.dev/features/run-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+- **Scalability**: The dynamic worker registration allows the system to scale by adding or removing workers and queues without modifying the core logic.
+- **Modular Design**: `BaseWorker` reduces redundancy by abstracting common logic, making it easier to maintain and extend.
+- **Fault Tolerance**: Automatic error handling and message requeuing ensure reliable message delivery.
+- **Efficient Resource Usage**: Prefetching and batch processing improve throughput and reduce network overhead.
 
-## Add new projects
+### Cons:
 
-While you could add new projects to your workspace manually, you might want to leverage [Nx plugins](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) and their [code generation](https://nx.dev/features/generate-code?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) feature.
+- **Complexity**: The system’s flexibility and dynamic behavior introduce complexity, particularly for developers unfamiliar with the architecture.
+- **Message Duplication**: If a worker crashes before acknowledging a message, it could result in message duplication unless proper deduplication is implemented.
+- **Limited Control over Worker Behavior**: The batch processing mechanism might not be suitable for all use cases where individual message processing is required.
+- **Hard-Coded Queue Setup**: The queue setup is tightly coupled to the system, which might cause issues when needing more complex or dynamic configurations.
 
-Use the plugin's generator to create new projects.
+---
 
-To generate a new application, use:
+## Conclusion
 
-```sh
-npx nx g @nx/nest:app demo
-```
-
-To generate a new library, use:
-
-```sh
-npx nx g @nx/node:lib mylib
-```
-
-You can use `npx nx list` to get a list of installed plugins. Then, run `npx nx list <plugin-name>` to learn about more specific capabilities of a particular plugin. Alternatively, [install Nx Console](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) to browse plugins and generators in your IDE.
-
-[Learn more about Nx plugins &raquo;](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) | [Browse the plugin registry &raquo;](https://nx.dev/plugin-registry?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Set up CI!
-
-### Step 1
-
-To connect to Nx Cloud, run the following command:
-
-```sh
-npx nx connect
-```
-
-Connecting to Nx Cloud ensures a [fast and scalable CI](https://nx.dev/ci/intro/why-nx-cloud?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) pipeline. It includes features such as:
-
-- [Remote caching](https://nx.dev/ci/features/remote-cache?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task distribution across multiple machines](https://nx.dev/ci/features/distribute-task-execution?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Automated e2e test splitting](https://nx.dev/ci/features/split-e2e-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task flakiness detection and rerunning](https://nx.dev/ci/features/flaky-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-### Step 2
-
-Use the following command to configure a CI workflow for your workspace:
-
-```sh
-npx nx g ci-workflow
-```
-
-[Learn more about Nx on CI](https://nx.dev/ci/intro/ci-with-nx#ready-get-started-with-your-provider?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Install Nx Console
-
-Nx Console is an editor extension that enriches your developer experience. It lets you run tasks, generate code, and improves code autocompletion in your IDE. It is available for VSCode and IntelliJ.
-
-[Install Nx Console &raquo;](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Useful links
-
-Learn more:
-
-- [Learn more about this workspace setup](https://nx.dev/nx-api/nest?utm_source=nx_project&amp;utm_medium=readme&amp;utm_campaign=nx_projects)
-- [Learn about Nx on CI](https://nx.dev/ci/intro/ci-with-nx?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Releasing Packages with Nx release](https://nx.dev/features/manage-releases?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [What are Nx plugins?](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-And join the Nx community:
-- [Discord](https://go.nx.dev/community)
-- [Follow us on X](https://twitter.com/nxdevtools) or [LinkedIn](https://www.linkedin.com/company/nrwl)
-- [Our Youtube channel](https://www.youtube.com/@nxdevtools)
-- [Our blog](https://nx.dev/blog?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+This RabbitMQ worker integration in NestJS provides an efficient and scalable solution for handling message queues, with robust features like batch processing, error handling, and dynamic worker registration. By leveraging the `BaseWorker` class, the system maintains flexibility, scalability, and ease of maintenance. However, considerations regarding complexity and potential message duplication should be made depending on the use case.
