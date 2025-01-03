@@ -3,27 +3,35 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "apps/nest-queue/src",
   "projectType": "application",
-  "tags": [],
   "targets": {
     "build": {
+      "dependsOn": ["mainBuild"],
       "executor": "nx:run-commands",
+      "options": {}
+    },
+    "mainBuild": {
+      "executor": "@nx/webpack:webpack",
+      "outputs": ["{options.outputPath}"],
       "options": {
-        "command": "webpack-cli build",
-        "args": ["node-env=production"]
+        "target": "node",
+        "compiler": "tsc",
+        "generatePackageJson": true,
+        "outputPath": "dist/apps/nest-queue",
+        "main": "apps/nest-queue/src/main.ts",
+        "tsConfig": "apps/nest-queue/tsconfig.app.json",
+        "assets": [],
+        "webpackConfig": "apps/nest-queue/webpack.config.js"
       },
       "configurations": {
-        "development": {
-          "args": ["node-env=development"]
-        }
+        "development": {},
+        "production": {}
       }
     },
     "serve": {
       "executor": "@nx/js:node",
       "defaultConfiguration": "development",
-      "dependsOn": ["build"],
       "options": {
-        "buildTarget": "nest-queue:build",
-        "runBuildTargetDependencies": false
+        "buildTarget": "nest-queue:build"
       },
       "configurations": {
         "development": {
@@ -33,11 +41,7 @@
           "buildTarget": "nest-queue:build:production"
         }
       }
-    },
-    "test": {
-      "options": {
-        "passWithNoTests": true
-      }
     }
-  }
+  },
+  "tags": []
 }
