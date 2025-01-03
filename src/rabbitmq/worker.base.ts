@@ -12,10 +12,14 @@ export interface BatchItem<T> {
 export abstract class BaseWorker<T> implements OnModuleDestroy {
   protected readonly logger = new Logger(this.constructor.name);
   private channel: ConfirmChannel;
-  private dlqChannel: ConfirmChannel; // Separate DLQ channel for failed messages
+  private dlqChannel: ConfirmChannel;
   private static workerCount = 0;
   private readonly workerId: number;
   private readonly queueName: string;
+
+  // New properties for partial-batch flush
+  private batchFlushTimer: NodeJS.Timeout | null = null;
+  private readonly FLUSH_INTERVAL_MS = 5000; // e.g., flush every 5 seconds
 
   constructor(
     protected readonly queueUtilsService: QueueUtilsService,
@@ -35,7 +39,6 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
 
   async initializeWorker(channel: ConfirmChannel): Promise<void> {
     this.channel = channel;
-
     this.channel.on('close', async () => {
       this.logger.warn(
         `${this.queueName} - Worker ID: ${this.workerId} - Channel closed. Reinitializing...`,
@@ -54,7 +57,6 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
       await this.channel.prefetch(prefetchCount);
 
       const queueArgsMatch = await this.ensureQueueArguments();
-
       if (!queueArgsMatch) {
         this.logger.error(
           `${this.queueName} - Worker ID: ${this.workerId} - Queue arguments conflict detected.`,
@@ -81,6 +83,7 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
             ).slice(0, 100)}...`,
           );
 
+          // If the batch reaches defaultBatchSize OR we are in 'individual' mode, flush immediately
           if (batch.length >= this.defaultBatchSize || this.acknowledgeMode === 'individual') {
             const currentBatch = [...batch];
             batch = [];
@@ -91,6 +94,24 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
           }
         }
       });
+
+      /**
+       * ONLY if we are in 'batch' mode, set up a timer to flush partial batches.
+       * If 'individual' mode, we already process each message immediately.
+       */
+      if (this.acknowledgeMode === 'batch') {
+        this.batchFlushTimer = setInterval(async () => {
+          if (batch.length > 0) {
+            // Flush the partial batch
+            const currentBatch = [...batch];
+            batch = [];
+            this.logger.log(
+              `${this.queueName} - Worker ID: ${this.workerId} - Timer flush: processing partial batch of size ${currentBatch.length}.`,
+            );
+            await this.processBatch(currentBatch);
+          }
+        }, this.FLUSH_INTERVAL_MS);
+      }
 
       this.logger.log(`${this.queueName} - Worker ID: ${this.workerId} - Worker initialized.`);
     } catch (error) {
@@ -178,7 +199,7 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
               `${this.queueName} - Worker ID: ${this.workerId} - Max retries reached. Moving message to DLQ.`,
             );
             try {
-              await this.publishToDLQ(item); // Attempt to publish to DLQ
+              await this.publishToDLQ(item);
               this.channel.ack(item.message); // Acknowledge to avoid re-processing
             } catch (dlqError) {
               this.logger.error(
@@ -187,6 +208,7 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
               );
             }
           } else {
+            // Exponential backoff before next retry
             await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
           }
         }
@@ -218,6 +240,10 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
     }
   }
 
+  /**
+   * Implement this in the concrete worker class to do
+   * actual processing for items.
+   */
   protected abstract processItem(items: T | T[]): Promise<void>;
 
   onModuleDestroy() {
@@ -225,6 +251,13 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
     this.logger.warn(
       `${this.queueName} - Worker ID: ${this.workerId} shutting down. Remaining workers: ${BaseWorker.workerCount}`,
     );
+
+    // Clear flush timer if we set one
+    if (this.batchFlushTimer) {
+      clearInterval(this.batchFlushTimer);
+      this.batchFlushTimer = null;
+      this.logger.log(`Batch flush timer for worker ${this.workerId} cleared.`);
+    }
 
     if (this.channel) {
       this.channel.close();

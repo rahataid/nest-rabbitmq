@@ -1,18 +1,14 @@
 import { Global, Inject, Injectable } from '@nestjs/common';
-import { Beneficiary, Prisma } from '@prisma/client';
+import { RpcException } from '@nestjs/microservices';
+import { Beneficiary } from '@prisma/client';
 import { AmqpConnectionManager, ChannelWrapper } from 'amqp-connection-manager';
 import { AMQP_CONNECTION, BENEFICIARY_QUEUE } from 'src/constants';
-import {
-  API_URL,
-  DATA_PROVIDER,
-  PRISMA_SERVICE,
-} from 'src/rabbitmq/dataproviders/dataprovider.module';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { API_URL, PRISMA_SERVICE } from 'src/rabbitmq/dataproviders/dataprovider.module';
 import { QueueUtilsService } from '../../rabbitmq/queue-utils.service';
-import { IDataProvider, RabbitMQModuleOptions } from '../../rabbitmq/types';
+import { RabbitMQModuleOptions } from '../../rabbitmq/types';
 import { getQueueByName } from '../../rabbitmq/utils';
 import { BaseWorker } from '../../rabbitmq/worker.base';
-import { PrismaService } from 'src/prisma/prisma.service';
-import { RpcException } from '@nestjs/microservices';
 
 @Global()
 @Injectable()
@@ -51,7 +47,7 @@ export class BeneficiaryWorker extends BaseWorker<Beneficiary> {
       name: beneficiary.name,
       email: beneficiary.email,
     }));
-    this.logger.log(`Processing batch: ${batch.batchIndex} }`);
+    this.logger.log(`Processing batch: ${batch} }`);
 
     try {
       // await this.prisma.$transaction(async tx => {
