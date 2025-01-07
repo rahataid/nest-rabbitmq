@@ -1,0 +1,374 @@
+<!doctype html>
+<html class="no-js" lang="">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="x-ua-compatible" content="ie=edge">
+        <title>@nest-queue/source documentation</title>
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+
+        <link rel="icon" type="image/x-icon" href="./images/favicon.ico">
+	   <link rel="stylesheet" href="./styles/style.css">
+        <link rel="stylesheet" href="./styles/dark.css">
+    </head>
+    <body>
+          <script>
+               // Blocking script to avoid flickering dark mode
+               // Dark mode toggle button
+               var useDark = window.matchMedia('(prefers-color-scheme: dark)');
+               var darkModeState = useDark.matches;
+               var $darkModeToggleSwitchers = document.querySelectorAll('.dark-mode-switch input');
+               var $darkModeToggles = document.querySelectorAll('.dark-mode-switch');
+               var darkModeStateLocal = localStorage.getItem('compodoc_darkmode-state');
+
+               function checkToggle(check) {
+                    for (var i = 0; i < $darkModeToggleSwitchers.length; i++) {
+                         $darkModeToggleSwitchers[i].checked = check;
+                    }
+               }
+
+               function toggleDarkMode(state) {
+                    if (window.localStorage) {
+                         localStorage.setItem('compodoc_darkmode-state', state);
+                    }
+
+                    checkToggle(state);
+
+                    const hasClass = document.body.classList.contains('dark');
+
+                    if (state) {
+                         for (var i = 0; i < $darkModeToggles.length; i++) {
+                              $darkModeToggles[i].classList.add('dark');
+                         }
+                         if (!hasClass) {
+                              document.body.classList.add('dark');
+                         }
+                    } else {
+                         for (var i = 0; i < $darkModeToggles.length; i++) {
+                              $darkModeToggles[i].classList.remove('dark');
+                         }
+                         if (hasClass) {
+                              document.body.classList.remove('dark');
+                         }
+                    }
+               }
+
+               useDark.addEventListener('change', function (evt) {
+                    toggleDarkMode(evt.matches);
+               });
+               if (darkModeStateLocal) {
+                    darkModeState = darkModeStateLocal === 'true';
+               }
+               toggleDarkMode(darkModeState);
+          </script>
+
+        <div class="navbar navbar-default navbar-fixed-top d-md-none p-0">
+               <div class="d-flex">
+                    <a href="./" class="navbar-brand">@nest-queue/source documentation</a>
+                    <button type="button" class="btn btn-default btn-menu ion-ios-menu" id="btn-menu"></button>
+               </div>
+        </div>
+
+        <div class="xs-menu menu" id="mobile-menu">
+                <div id="book-search-input" role="search"><input type="text" placeholder="Type to search"></div>            <compodoc-menu></compodoc-menu>
+        </div>
+
+        <div class="container-fluid main">
+           <div class="row main">
+               <div class="d-none d-md-block menu">
+                   <compodoc-menu mode="normal"></compodoc-menu>
+               </div>
+               <!-- START CONTENT -->
+               <div class="content getting-started">
+                   <div class="content-data">
+
+<h1>RabbitMQ Worker Integration in NestJS</h1>
+<h2>Overview</h2>
+<p>This repository provides a robust integration for managing RabbitMQ workers in a NestJS application. The system handles message queues, batch processing, worker lifecycle management, and error handling in a scalable, flexible manner. The core components of this setup include dynamic worker registration, message processing in batches, and queue management using <code>amqp-connection-manager</code> and <code>amqplib</code>.</p>
+<h3>Key Features:</h3>
+<ul>
+<li><strong>Dynamic Worker Registration</strong>: Register multiple workers dynamically to process different RabbitMQ queues.</li>
+<li><strong>Batch Processing</strong>: Process messages in batches to improve throughput and reduce overhead.</li>
+<li><strong>Error Handling and Acknowledgment</strong>: Ensure reliable message delivery with automatic acknowledgment and error handling.</li>
+<li><strong>Queue Management</strong>: Automatically assert queues and validate their configurations.</li>
+<li><strong>Channel Prefetching</strong>: Optimize resource usage by controlling how many messages the worker should prefetch at once.</li>
+</ul>
+<hr>
+<h2>Optimizations and Design Choices</h2>
+<h3>1. <strong>Dynamic Worker Registration</strong>:</h3>
+<p>The system uses a dynamic registration approach to add and remove workers without modifying the core logic. This flexibility allows you to scale the application by adding workers to handle different queues as needed.</p>
+<ul>
+<li><p><strong>Code Example</strong>:</p>
+<b>Example :</b><div><pre class="line-numbers"><code class="language-typescript">WorkerModule.register([
+  { provide: &#39;BeneficiaryWorker1&#39;, useClass: BeneficiaryWorker },
+  { provide: &#39;BeneficiaryWorker2&#39;, useClass: BeneficiaryWorker },
+]);</code></pre></div></li>
+<li><p><strong>Benefit</strong>: This design allows you to add new queues or workers easily, enhancing the system&#39;s flexibility and scalability.</p>
+</li>
+</ul>
+<h3>2. <strong>Batch Processing</strong>:</h3>
+<p>Messages are processed in batches, reducing the overhead associated with handling messages individually. By grouping messages, batch processing optimizes throughput and decreases the number of network operations and acknowledgments.</p>
+<ul>
+<li><p><strong>Code Example</strong>:</p>
+<b>Example :</b><div><pre class="line-numbers"><code class="language-typescript">const batch = messages.slice(i, i + batchSize);
+await this.channelWrapper.addSetup(async (channel: ConfirmChannel) =&gt; {
+  await channel.assertQueue(queue, { durable: true });
+  channel.sendToQueue(queue, Buffer.from(JSON.stringify({ data: batch, batchSize, batchIndex: i })));
+});</code></pre></div></li>
+<li><p><strong>Benefit</strong>: Processing multiple messages together reduces network latency and improves overall performance.</p>
+</li>
+</ul>
+<h3>3. <strong>Error Handling and Acknowledgment</strong>:</h3>
+<p>The worker system ensures that if a message fails to be processed, it is requeued for retry. By using <code>ack</code> and <code>nack</code>, messages are acknowledged only when processed successfully, while failed messages can be requeued for future processing.</p>
+<ul>
+<li><p><strong>Code Example</strong>:</p>
+<b>Example :</b><div><pre class="line-numbers"><code class="language-typescript">this.channel.ack(item.message); // Acknowledge successful processing
+this.channel.nack(item.message, false, true); // Requeue failed messages</code></pre></div></li>
+<li><p><strong>Benefit</strong>: This guarantees reliable message delivery and minimizes message loss in case of errors.</p>
+</li>
+</ul>
+<h3>4. <strong>Queue Argument Validation</strong>:</h3>
+<p>The system checks if the queue arguments match the expected configuration using <code>ensureQueueArguments</code>. If a conflict is detected, the queue is reset, or manual intervention is flagged.</p>
+<ul>
+<li><p><strong>Code Example</strong>:</p>
+<b>Example :</b><div><pre class="line-numbers"><code class="language-typescript">const existingArgs = this.queueArguments;
+if (JSON.stringify(existingArgs) !== JSON.stringify(this.queueArguments)) {
+  // Handle conflict and reset queue if necessary
+}</code></pre></div></li>
+<li><p><strong>Benefit</strong>: This ensures that workers always work with the correct queue configurations, reducing the chances of misbehaving queues.</p>
+</li>
+</ul>
+<h3>5. <strong>Channel Prefetching</strong>:</h3>
+<p>Prefetching is implemented to limit the number of messages fetched by a worker at once, helping manage resource usage effectively.</p>
+<ul>
+<li><p><strong>Code Example</strong>:</p>
+<b>Example :</b><div><pre class="line-numbers"><code class="language-typescript">await this.channel.prefetch(this.defaultBatchSize); // Limit the number of messages fetched</code></pre></div></li>
+<li><p><strong>Benefit</strong>: Ensures workers are not overwhelmed with too many messages and helps distribute processing more evenly.</p>
+</li>
+</ul>
+<h3>6. <strong>Queue Setup and Initialization</strong>:</h3>
+<p>Queues are set up only once during worker initialization, which reduces unnecessary reinitialization and ensures the worker can start processing immediately.</p>
+<ul>
+<li><strong>Benefit</strong>: Reduces startup time and ensures that workers are ready to consume messages as soon as they are launched.</li>
+</ul>
+<hr>
+<h2>Flow Diagram</h2>
+<b>Example :</b><div><pre class="line-numbers"><code class="language-plaintext">  +-------------------+        +-------------------------+
+  | Worker Module     |        | RabbitMQ Service        |
+  | (Dynamic Register)|-------&gt;| (Publish/Consume Logic) |
+  +-------------------+        +-------------------------+
+            |
+            v
+  +--------------------------+
+  | Beneficiary Worker       |
+  | (Batch Processing Logic) |
+  +--------------------------+
+            |
+            v
+  +-----------------------+
+  | Queue Management      |
+  | (Setup, Acknowledgment)|
+  +-----------------------+
+            |
+            v
+  +----------------------------+
+  | Channel Prefetching        |
+  | (Efficient Resource Use)   |
+  +----------------------------+</code></pre></div><hr>
+<h2>BaseWorker Class</h2>
+<p>The <code>BaseWorker</code> class provides an abstract base for all workers, encapsulating the common logic for interacting with RabbitMQ. It handles message consumption, batch processing, queue setup, and error handling. This design reduces code duplication and ensures that all workers follow a consistent pattern.</p>
+<h3>Key Features of <code>BaseWorker</code>:</h3>
+<ol>
+<li><strong>Queue Initialization</strong>: Ensures queues are set up correctly with the required arguments.</li>
+<li><strong>Batch Message Consumption</strong>: Consumes messages from queues in batches, improving throughput and reducing latency.</li>
+<li><strong>Error Handling</strong>: Acknowledges or requeues messages based on whether they were successfully processed.</li>
+<li><strong>Worker Lifecycle Management</strong>: Manages initialization, message consumption, and graceful shutdown of workers.</li>
+<li><strong>Logging</strong>: Provides detailed logs for monitoring and troubleshooting.</li>
+</ol>
+<h4>Code Example:</h4>
+<b>Example :</b><div><pre class="line-numbers"><code class="language-typescript">export abstract class BaseWorker&lt;T&gt; implements OnModuleDestroy {
+  protected readonly logger = new Logger(this.constructor.name);
+  private channel: ConfirmChannel;
+  private static workerCount = 0;
+  private readonly workerId: number;
+  private readonly queueName: string;
+
+  constructor(protected readonly queueUtilsService: QueueUtilsService, queueName: string, private readonly defaultBatchSize = 10, private readonly acknowledgeMode: &#39;individual&#39; | &#39;batch&#39; = &#39;individual&#39;, private readonly amqpConnection: any, private readonly queueArguments: RabbitMQModuleOptions[&#39;queues&#39;][0][&#39;options&#39;][&#39;arguments&#39;] = {}) {
+    this.queueName = queueName;
+    BaseWorker.workerCount++;
+    this.workerId = BaseWorker.workerCount;
+    this.logger.log(`${this.queueName} - Worker ID: ${this.workerId} created.`);
+  }
+
+  async initializeWorker(channel: ConfirmChannel): Promise&lt;void&gt; {
+    this.channel = channel;
+    this.channel.on(&#39;close&#39;, async () =&gt; {
+      this.logger.warn(`${this.queueName} - Worker ID: ${this.workerId} - Channel closed. Reinitializing...`);
+    });
+
+    try {
+      this.logger.log(`${this.queueName} - Worker ID: ${this.workerId} - Setting prefetch to ${this.defaultBatchSize}`);
+      await this.channel.prefetch(this.defaultBatchSize);
+
+      const queueArgsMatch = await this.ensureQueueArguments();
+      if (!queueArgsMatch) return;
+
+      let batch: BatchItem&lt;T&gt;[] = [];
+      await this.channel.consume(this.queueName, async (message) =&gt; {
+        if (message) {
+          const content = JSON.parse(message.content.toString());
+          batch.push({ data: content, message });
+          if (batch.length &gt;= this.defaultBatchSize || this.acknowledgeMode === &#39;individual&#39;) {
+            const currentBatch = [...batch];
+            batch = [];
+            await this.processBatch(currentBatch);
+          }
+        }
+      });
+    } catch (error) {
+      this.logger.error(`${this.queueName} - Worker ID: ${this.workerId} - Error:`, error);
+    }
+  }
+
+  private async ensureQueueArguments(): Promise&lt;boolean&gt; {
+    try {
+      const existingArgs = this.queueArguments;
+      if (JSON.stringify(existingArgs) !== JSON.stringify(this.queueArguments)) {
+        this.logger.error(`${this.queueName} - Worker ID: ${this.workerId} - Queue arguments conflict detected.`);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      this.logger.error(`Error ensuring queue arguments:`, error);
+      return false;
+    }
+  }
+
+  private async processBatch(batch: BatchItem&lt;T&gt;[]): Promise&lt;void&gt; {
+    for (const item of batch) {
+      try {
+        await this.processItem([item.data]);
+        this.channel.ack(item.message);
+      } catch (error) {
+        this.channel.nack(item.message, false, true);
+      }
+    }
+  }
+
+  protected abstract processItem(items: T | T[]): Promise&lt;void&gt;;
+
+  onModuleDestroy() {
+    BaseWorker.workerCount--;
+    this.logger.warn(`${this.queueName} - Worker ID: ${this.workerId} shutting down.`);
+  }
+}</code></pre></div><hr>
+<h2>Pros and Cons of the Methods Used</h2>
+<h3>Pros:</h3>
+<ul>
+<li><strong>Scalability</strong>: The dynamic worker registration allows the system to scale by adding or removing workers and queues without modifying the core logic.</li>
+<li><strong>Modular Design</strong>: <code>BaseWorker</code> reduces redundancy by abstracting common logic, making it easier to maintain and extend.</li>
+<li><strong>Fault Tolerance</strong>: Automatic error handling and message requeuing ensure reliable message delivery.</li>
+<li><strong>Efficient Resource Usage</strong>: Prefetching and batch processing improve throughput and reduce network overhead.</li>
+</ul>
+<h3>Cons:</h3>
+<ul>
+<li><strong>Complexity</strong>: The system’s flexibility and dynamic behavior introduce complexity, particularly for developers unfamiliar with the architecture.</li>
+<li><strong>Message Duplication</strong>: If a worker crashes before acknowledging a message, it could result in message duplication unless proper deduplication is implemented.</li>
+<li><strong>Limited Control over Worker Behavior</strong>: The batch processing mechanism might not be suitable for all use cases where individual message processing is required.</li>
+<li><strong>Hard-Coded Queue Setup</strong>: The queue setup is tightly coupled to the system, which might cause issues when needing more complex or dynamic configurations.</li>
+</ul>
+<hr>
+<h2>Conclusion</h2>
+<p>This RabbitMQ worker integration in NestJS provides an efficient and scalable solution for handling message queues, with robust features like batch processing, error handling, and dynamic worker registration. By leveraging the <code>BaseWorker</code> class, the system maintains flexibility, scalability, and ease of maintenance. However, considerations regarding complexity and potential message duplication should be made depending on the use case.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                   </div><div class="search-results">
+    <div class="has-results">
+        <h1 class="search-results-title"><span class='search-results-count'></span> results matching "<span class='search-query'></span>"</h1>
+        <ul class="search-results-list"></ul>
+    </div>
+    <div class="no-results">
+        <h1 class="search-results-title">No results matching "<span class='search-query'></span>"</h1>
+    </div>
+</div>
+</div>
+               <!-- END CONTENT -->
+           </div>
+       </div>
+
+          <label class="dark-mode-switch">
+               <input type="checkbox">
+               <span class="slider">
+                    <svg class="slider-icon" viewBox="0 0 24 24" fill="none" height="20" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" width="20" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"></path>
+                    </svg>
+               </span>
+          </label>
+
+       <script>
+            var COMPODOC_CURRENT_PAGE_DEPTH = 0;
+            var COMPODOC_CURRENT_PAGE_CONTEXT = 'getting-started';
+            var COMPODOC_CURRENT_PAGE_URL = 'index.html';
+            var MAX_SEARCH_RESULTS = 15;
+       </script>
+
+       <script>
+               $darkModeToggleSwitchers = document.querySelectorAll('.dark-mode-switch input');
+               checkToggle(darkModeState);
+               if ($darkModeToggleSwitchers.length > 0) {
+                    for (var i = 0; i < $darkModeToggleSwitchers.length; i++) {
+                         $darkModeToggleSwitchers[i].addEventListener('change', function (event) {
+                              darkModeState = !darkModeState;
+                              toggleDarkMode(darkModeState);
+                         });
+                    }
+               }
+          </script>
+
+       <script src="./js/libs/custom-elements.min.js"></script>
+       <script src="./js/libs/lit-html.js"></script>
+
+       <script src="./js/menu-wc.js" defer></script>
+       <script nomodule src="./js/menu-wc_es5.js" defer></script>
+
+       <script src="./js/libs/bootstrap-native.js"></script>
+
+       <script src="./js/libs/es6-shim.min.js"></script>
+       <script src="./js/libs/EventDispatcher.js"></script>
+       <script src="./js/libs/promise.min.js"></script>
+
+       <script src="./js/compodoc.js"></script>
+
+       <script src="./js/tabs.js"></script>
+       <script src="./js/menu.js"></script>
+       <script src="./js/libs/clipboard.min.js"></script>
+       <script src="./js/libs/prism.js"></script>
+       <script src="./js/sourceCode.js"></script>
+          <script src="./js/search/search.js"></script>
+          <script src="./js/search/lunr.min.js"></script>
+          <script src="./js/search/search-lunr.js"></script>
+          <script src="./js/search/search_index.js"></script>
+       <script src="./js/lazy-load-graphs.js"></script>
+
+
+    </body>
+</html>

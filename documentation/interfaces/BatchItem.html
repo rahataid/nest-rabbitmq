@@ -1,0 +1,612 @@
+<!doctype html>
+<html class="no-js" lang="">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="x-ua-compatible" content="ie=edge">
+        <title>@nest-queue/source documentation</title>
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+
+        <link rel="icon" type="image/x-icon" href="../images/favicon.ico">
+	   <link rel="stylesheet" href="../styles/style.css">
+        <link rel="stylesheet" href="../styles/dark.css">
+    </head>
+    <body>
+          <script>
+               // Blocking script to avoid flickering dark mode
+               // Dark mode toggle button
+               var useDark = window.matchMedia('(prefers-color-scheme: dark)');
+               var darkModeState = useDark.matches;
+               var $darkModeToggleSwitchers = document.querySelectorAll('.dark-mode-switch input');
+               var $darkModeToggles = document.querySelectorAll('.dark-mode-switch');
+               var darkModeStateLocal = localStorage.getItem('compodoc_darkmode-state');
+
+               function checkToggle(check) {
+                    for (var i = 0; i < $darkModeToggleSwitchers.length; i++) {
+                         $darkModeToggleSwitchers[i].checked = check;
+                    }
+               }
+
+               function toggleDarkMode(state) {
+                    if (window.localStorage) {
+                         localStorage.setItem('compodoc_darkmode-state', state);
+                    }
+
+                    checkToggle(state);
+
+                    const hasClass = document.body.classList.contains('dark');
+
+                    if (state) {
+                         for (var i = 0; i < $darkModeToggles.length; i++) {
+                              $darkModeToggles[i].classList.add('dark');
+                         }
+                         if (!hasClass) {
+                              document.body.classList.add('dark');
+                         }
+                    } else {
+                         for (var i = 0; i < $darkModeToggles.length; i++) {
+                              $darkModeToggles[i].classList.remove('dark');
+                         }
+                         if (hasClass) {
+                              document.body.classList.remove('dark');
+                         }
+                    }
+               }
+
+               useDark.addEventListener('change', function (evt) {
+                    toggleDarkMode(evt.matches);
+               });
+               if (darkModeStateLocal) {
+                    darkModeState = darkModeStateLocal === 'true';
+               }
+               toggleDarkMode(darkModeState);
+          </script>
+
+        <div class="navbar navbar-default navbar-fixed-top d-md-none p-0">
+               <div class="d-flex">
+                    <a href="../" class="navbar-brand">@nest-queue/source documentation</a>
+                    <button type="button" class="btn btn-default btn-menu ion-ios-menu" id="btn-menu"></button>
+               </div>
+        </div>
+
+        <div class="xs-menu menu" id="mobile-menu">
+                <div id="book-search-input" role="search"><input type="text" placeholder="Type to search"></div>            <compodoc-menu></compodoc-menu>
+        </div>
+
+        <div class="container-fluid main">
+           <div class="row main">
+               <div class="d-none d-md-block menu">
+                   <compodoc-menu mode="normal"></compodoc-menu>
+               </div>
+               <!-- START CONTENT -->
+               <div class="content interface">
+                   <div class="content-data">
+
+
+
+
+
+
+
+
+
+
+
+
+
+<ol class="breadcrumb">
+  <li class="breadcrumb-item">Interfaces</li>
+  <li class="breadcrumb-item"
+  >
+  BatchItem</li>
+</ol>
+
+<ul class="nav nav-tabs" role="tablist">
+        <li class="nav-item">
+            <a href="#info" 
+                class="nav-link"
+                class="nav-link active"
+                role="tab" id="info-tab" data-bs-toggle="tab" data-link="info">Info</a>
+        </li>
+        <li class="nav-item">
+            <a href="#source" 
+                class="nav-link"
+                
+                role="tab" id="source-tab" data-bs-toggle="tab" data-link="source">Source</a>
+        </li>
+</ul>
+
+<div class="tab-content">
+    <div class="tab-pane fade active in" id="info">
+        <p class="comment">
+            <h3>File</h3>
+        </p>
+        <p class="comment">
+            <code>libs/rabbitmq/src/worker.base.ts</code>
+        </p>
+
+
+
+
+        <section data-compodoc="block-index">
+            <h3 id="index">Index</h3>
+            <table class="table table-sm table-bordered index-table">
+                <tbody>
+                    <tr>
+                        <td class="col-md-4">
+                            <h6><b>Properties</b></h6>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="col-md-4">
+                            <ul class="index-list">
+                                <li>
+                                        <a href="#data" 
+>
+                                            data
+                                        </a>
+                                </li>
+                                <li>
+                                        <a href="#message" 
+>
+                                            message
+                                        </a>
+                                </li>
+                            </ul>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+
+
+            <section data-compodoc="block-properties">
+                <h3 id="inputs">Properties</h3>
+                    <table class="table table-sm table-bordered">
+                        <tbody>
+                                <tr>
+                                    <td class="col-md-4">
+                                        <a name="data"></a>
+                                        <span class="name "><b>data</b>
+                                            <a href="#data">
+                                                <span class="icon ion-ios-link"></span>
+                                            </a>
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="col-md-4">
+                                        <code>data:     <code>T</code>
+</code>
+                                    </td>
+                                </tr>
+
+
+                                    <tr>
+                                        <td class="col-md-4">
+                                            <i>Type : </i>    <code>T</code>
+
+                                        </td>
+                                    </tr>
+
+
+
+
+
+                        </tbody>
+                    </table>
+                    <table class="table table-sm table-bordered">
+                        <tbody>
+                                <tr>
+                                    <td class="col-md-4">
+                                        <a name="message"></a>
+                                        <span class="name "><b>message</b>
+                                            <a href="#message">
+                                                <span class="icon ion-ios-link"></span>
+                                            </a>
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="col-md-4">
+                                        <code>message:         <code><a href="https://www.typescriptlang.org/docs/handbook/basic-types.html" target="_blank" >any</a></code>
+</code>
+                                    </td>
+                                </tr>
+
+
+                                    <tr>
+                                        <td class="col-md-4">
+                                            <i>Type : </i>        <code><a href="https://www.typescriptlang.org/docs/handbook/basic-types.html" target="_blank" >any</a></code>
+
+                                        </td>
+                                    </tr>
+
+
+
+
+
+                        </tbody>
+                    </table>
+            </section>
+    </div>
+
+
+    <div class="tab-pane fade  tab-source-code" id="source">
+        <pre class="line-numbers compodoc-sourcecode"><code class="language-typescript">import { Injectable, Logger, OnModuleDestroy } from &#x27;@nestjs/common&#x27;;
+import { ConfirmChannel } from &#x27;amqplib&#x27;;
+import { QueueUtilsService } from &#x27;./queue-utils.service&#x27;;
+import { RabbitMQModuleOptions } from &#x27;./types&#x27;;
+
+export interface BatchItem&lt;T&gt; {
+  data: T;
+  message: any;
+}
+
+@Injectable()
+export abstract class BaseWorker&lt;T&gt; implements OnModuleDestroy {
+  protected readonly logger &#x3D; new Logger(this.constructor.name);
+  private channel: ConfirmChannel;
+  private dlqChannel: ConfirmChannel | undefined;
+  private static workerCount &#x3D; 0;
+  private readonly workerId: number;
+  private readonly queueName: string;
+
+  // New properties for partial-batch flush
+  private batchFlushTimer: NodeJS.Timeout | null &#x3D; null;
+  private readonly FLUSH_INTERVAL_MS &#x3D; 5000; // e.g., flush every 5 seconds
+
+  constructor(
+    protected readonly queueUtilsService: QueueUtilsService,
+    queueName: string,
+    private readonly defaultBatchSize &#x3D; 10,
+    private readonly acknowledgeMode: &#x27;individual&#x27; | &#x27;batch&#x27; &#x3D; &#x27;individual&#x27;,
+    private readonly amqpConnection: any,
+    private readonly queueArguments: RabbitMQModuleOptions[&#x27;queues&#x27;][0][&#x27;options&#x27;][&#x27;arguments&#x27;] &#x3D; {}
+  ) {
+    this.queueName &#x3D; queueName;
+    BaseWorker.workerCount++;
+    this.workerId &#x3D; BaseWorker.workerCount;
+    this.logger.log(
+      &#x60;${this.queueName} - Worker instance created. Worker ID: ${this.workerId}. Total workers: ${BaseWorker.workerCount}&#x60;
+    );
+  }
+
+  async initializeWorker(channel: ConfirmChannel): Promise&lt;void&gt; {
+    this.channel &#x3D; channel;
+    this.channel.on(&#x27;close&#x27;, async () &#x3D;&gt; {
+      this.logger.warn(
+        &#x60;${this.queueName} - Worker ID: ${this.workerId} - Channel closed. Reinitializing...&#x60;
+      );
+    });
+
+    this.channel.on(&#x27;error&#x27;, (error) &#x3D;&gt; {
+      this.logger.error(
+        &#x60;${this.queueName} - Worker ID: ${this.workerId} - Channel error:&#x60;,
+        error
+      );
+    });
+
+    try {
+      const prefetchCount &#x3D; this.calculateOptimalPrefetch();
+      this.logger.log(
+        &#x60;${this.queueName} - Worker ID: ${this.workerId} - Setting prefetch count to ${prefetchCount}&#x60;
+      );
+      await this.channel.prefetch(prefetchCount);
+
+      const queueArgsMatch &#x3D; await this.ensureQueueArguments();
+      if (!queueArgsMatch) {
+        this.logger.error(
+          &#x60;${this.queueName} - Worker ID: ${this.workerId} - Queue arguments conflict detected.&#x60;
+        );
+        return;
+      }
+
+      this.logger.log(
+        &#x60;${this.queueName} - Worker ID: ${this.workerId} - Queue is ready.&#x60;
+      );
+
+      // Initialize a separate channel for the DLQ
+      this.dlqChannel &#x3D; await this.amqpConnection.createChannel();
+      await this.dlqChannel.assertQueue(&#x27;dead_letter_queue&#x27;, { durable: true });
+
+      let batch: BatchItem&lt;T&gt;[] &#x3D; [];
+
+      await this.channel.consume(this.queueName, async (message) &#x3D;&gt; {
+        if (message) {
+          const content &#x3D; JSON.parse(message.content.toString());
+          batch.push({ data: content, message });
+
+          this.logger.log(
+            &#x60;${this.queueName} - Worker ID: ${
+              this.workerId
+            } - Received message: ${JSON.stringify(content).slice(0, 100)}...&#x60;
+          );
+
+          // If the batch reaches defaultBatchSize OR we are in &#x27;individual&#x27; mode, flush immediately
+          if (
+            batch.length &gt;&#x3D; this.defaultBatchSize ||
+            this.acknowledgeMode &#x3D;&#x3D;&#x3D; &#x27;individual&#x27;
+          ) {
+            const currentBatch &#x3D; [...batch];
+            batch &#x3D; [];
+            this.logger.log(
+              &#x60;${this.queueName} - Worker ID: ${this.workerId} - Processing batch of size: ${currentBatch.length}.&#x60;
+            );
+            await this.processBatch(currentBatch);
+          }
+        }
+      });
+
+      /**
+       * ONLY if we are in &#x27;batch&#x27; mode, set up a timer to flush partial batches.
+       * If &#x27;individual&#x27; mode, we already process each message immediately.
+       */
+      if (this.acknowledgeMode &#x3D;&#x3D;&#x3D; &#x27;batch&#x27;) {
+        this.batchFlushTimer &#x3D; setInterval(async () &#x3D;&gt; {
+          if (batch.length &gt; 0) {
+            // Flush the partial batch
+            const currentBatch &#x3D; [...batch];
+            batch &#x3D; [];
+            this.logger.log(
+              &#x60;${this.queueName} - Worker ID: ${this.workerId} - Timer flush: processing partial batch of size ${currentBatch.length}.&#x60;
+            );
+            await this.processBatch(currentBatch);
+          }
+        }, this.FLUSH_INTERVAL_MS);
+      }
+
+      this.logger.log(
+        &#x60;${this.queueName} - Worker ID: ${this.workerId} - Worker initialized.&#x60;
+      );
+    } catch (error) {
+      this.logger.error(
+        &#x60;${this.queueName} - Worker ID: ${this.workerId} - Error initializing worker:&#x60;,
+        error
+      );
+    }
+  }
+
+  private calculateOptimalPrefetch(): number {
+    const prefetch &#x3D; Math.max(
+      10,
+      Math.floor(Number(process.env[&#x27;MAX_PREFETCH&#x27;]) || 20)
+    );
+    this.logger.log(&#x60;Optimal prefetch count calculated: ${prefetch}&#x60;);
+    return prefetch;
+  }
+
+  private async ensureQueueArguments(): Promise&lt;boolean&gt; {
+    try {
+      const existingArgs &#x3D; this.queueArguments;
+
+      if (
+        JSON.stringify(existingArgs) !&#x3D;&#x3D; JSON.stringify(this.queueArguments)
+      ) {
+        this.logger.error(
+          &#x60;${this.queueName} - Worker ID: ${
+            this.workerId
+          } - Queue arguments conflict: Existing&#x3D;${JSON.stringify(
+            existingArgs
+          )}, Provided&#x3D;${JSON.stringify(this.queueArguments)}&#x60;
+        );
+
+        if (process.env[&#x27;FORCE_QUEUE_RESET&#x27;] &#x3D;&#x3D;&#x3D; &#x27;true&#x27;) {
+          this.logger.warn(
+            &#x60;${this.queueName} - Worker ID: ${this.workerId} - Force resetting queue.&#x60;
+          );
+          await this.channel.deleteQueue(this.queueName);
+          await this.channel.assertQueue(this.queueName, {
+            durable: true,
+            arguments: this.queueArguments,
+          });
+          return true;
+        }
+
+        return false;
+      }
+
+      this.logger.log(
+        &#x60;${this.queueName} - Worker ID: ${this.workerId} - Queue exists with matching arguments.&#x60;
+      );
+      return true;
+    } catch (error: any) {
+      if (error.message.includes(&#x27;NOT_FOUND&#x27;)) {
+        await this.channel.assertQueue(this.queueName, {
+          durable: true,
+          arguments: this.queueArguments,
+        });
+        return true;
+      }
+      throw error;
+    }
+  }
+
+  private async processBatch(batch: BatchItem&lt;T&gt;[]): Promise&lt;void&gt; {
+    for (const item of batch) {
+      let retryCount &#x3D; 0;
+      const maxRetries &#x3D; 3;
+      let success &#x3D; false;
+
+      while (retryCount &lt; maxRetries) {
+        try {
+          await this.processItem([item.data]);
+          this.channel.ack(item.message); // Acknowledge successful processing
+          this.logger.log(
+            &#x60;${this.queueName} - Worker ID: ${this.workerId} - Message processed and acknowledged.&#x60;
+          );
+          success &#x3D; true;
+          break; // Exit the retry loop on success
+        } catch (error) {
+          retryCount++;
+          this.logger.error(
+            &#x60;${this.queueName} - Worker ID: ${this.workerId} - Error processing message. Retrying... (Attempt ${retryCount}/${maxRetries})&#x60;,
+            error
+          );
+
+          if (retryCount &gt;&#x3D; maxRetries) {
+            this.logger.error(
+              &#x60;${this.queueName} - Worker ID: ${this.workerId} - Max retries reached. Moving message to DLQ.&#x60;
+            );
+            try {
+              await this.publishToDLQ(item);
+              this.channel.ack(item.message); // Acknowledge to avoid re-processing
+            } catch (dlqError) {
+              this.logger.error(
+                &#x60;${this.queueName} - Worker ID: ${this.workerId} - Failed to publish to DLQ. Message will remain unacknowledged.&#x60;,
+                dlqError
+              );
+            }
+          } else {
+            // Exponential backoff before next retry
+            await new Promise((resolve) &#x3D;&gt;
+              setTimeout(resolve, Math.pow(2, retryCount) * 1000)
+            );
+          }
+        }
+      }
+
+      if (!success &amp;&amp; retryCount &gt;&#x3D; maxRetries) {
+        this.logger.warn(
+          &#x60;${this.queueName} - Worker ID: ${this.workerId} - Message failed after retries and DLQ attempt.&#x60;
+        );
+      }
+    }
+  }
+
+  private async publishToDLQ(item: BatchItem&lt;T&gt;) {
+    try {
+      await this.dlqChannel.sendToQueue(
+        &#x27;dead_letter_queue&#x27;,
+        Buffer.from(JSON.stringify(item.data))
+      );
+      this.logger.log(
+        &#x60;${this.queueName} - Worker ID: ${this.workerId} - Message published to DLQ.&#x60;
+      );
+    } catch (error) {
+      this.logger.error(
+        &#x60;${this.queueName} - Worker ID: ${this.workerId} - Failed to publish to DLQ:&#x60;,
+        error
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Implement this in the concrete worker class to do
+   * actual processing for items.
+   */
+  protected abstract processItem(items: T | T[]): Promise&lt;void&gt;;
+
+  onModuleDestroy() {
+    BaseWorker.workerCount--;
+    this.logger.warn(
+      &#x60;${this.queueName} - Worker ID: ${this.workerId} shutting down. Remaining workers: ${BaseWorker.workerCount}&#x60;
+    );
+
+    // Clear flush timer if we set one
+    if (this.batchFlushTimer) {
+      clearInterval(this.batchFlushTimer);
+      this.batchFlushTimer &#x3D; null;
+      this.logger.log(&#x60;Batch flush timer for worker ${this.workerId} cleared.&#x60;);
+    }
+
+    if (this.channel) {
+      this.channel.close();
+      this.logger.log(&#x60;Channel for worker ${this.workerId} closed.&#x60;);
+    }
+
+    if (this.dlqChannel) {
+      this.dlqChannel.close();
+      this.logger.log(&#x60;DLQ channel for worker ${this.workerId} closed.&#x60;);
+    }
+
+    if (this.amqpConnection) {
+      this.amqpConnection.close();
+      this.logger.log(&#x60;Connection for worker ${this.workerId} closed.&#x60;);
+    }
+  }
+}
+</code></pre>
+    </div>
+</div>
+
+
+
+
+
+
+
+
+                   </div><div class="search-results">
+    <div class="has-results">
+        <h1 class="search-results-title"><span class='search-results-count'></span> results matching "<span class='search-query'></span>"</h1>
+        <ul class="search-results-list"></ul>
+    </div>
+    <div class="no-results">
+        <h1 class="search-results-title">No results matching "<span class='search-query'></span>"</h1>
+    </div>
+</div>
+</div>
+               <!-- END CONTENT -->
+           </div>
+       </div>
+
+          <label class="dark-mode-switch">
+               <input type="checkbox">
+               <span class="slider">
+                    <svg class="slider-icon" viewBox="0 0 24 24" fill="none" height="20" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" width="20" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"></path>
+                    </svg>
+               </span>
+          </label>
+
+       <script>
+            var COMPODOC_CURRENT_PAGE_DEPTH = 1;
+            var COMPODOC_CURRENT_PAGE_CONTEXT = 'interface';
+            var COMPODOC_CURRENT_PAGE_URL = 'BatchItem.html';
+            var MAX_SEARCH_RESULTS = 15;
+       </script>
+
+       <script>
+               $darkModeToggleSwitchers = document.querySelectorAll('.dark-mode-switch input');
+               checkToggle(darkModeState);
+               if ($darkModeToggleSwitchers.length > 0) {
+                    for (var i = 0; i < $darkModeToggleSwitchers.length; i++) {
+                         $darkModeToggleSwitchers[i].addEventListener('change', function (event) {
+                              darkModeState = !darkModeState;
+                              toggleDarkMode(darkModeState);
+                         });
+                    }
+               }
+          </script>
+
+       <script src="../js/libs/custom-elements.min.js"></script>
+       <script src="../js/libs/lit-html.js"></script>
+
+       <script src="../js/menu-wc.js" defer></script>
+       <script nomodule src="../js/menu-wc_es5.js" defer></script>
+
+       <script src="../js/libs/bootstrap-native.js"></script>
+
+       <script src="../js/libs/es6-shim.min.js"></script>
+       <script src="../js/libs/EventDispatcher.js"></script>
+       <script src="../js/libs/promise.min.js"></script>
+
+       <script src="../js/compodoc.js"></script>
+
+       <script src="../js/tabs.js"></script>
+       <script src="../js/menu.js"></script>
+       <script src="../js/libs/clipboard.min.js"></script>
+       <script src="../js/libs/prism.js"></script>
+       <script src="../js/sourceCode.js"></script>
+          <script src="../js/search/search.js"></script>
+          <script src="../js/search/lunr.min.js"></script>
+          <script src="../js/search/search-lunr.js"></script>
+          <script src="../js/search/search_index.js"></script>
+       <script src="../js/lazy-load-graphs.js"></script>
+
+
+    </body>
+</html>

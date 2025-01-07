@@ -64,13 +64,9 @@ export class BeneficiaryWorker extends BaseWorker<Beneficiary> {
       // });
 
       //Pause a worker for 10 seconds
-      // await new Promise(resolve => setTimeout(resolve, 10000));
-      await this.prisma.beneficiary
-        .createMany({ data: beneficiaries })
-        .catch((err) => {
-          console.log('Error', err);
-          throw err;
-        });
+      // await new Promise((resolve) => setTimeout(resolve, 1000));
+      await this.prisma.beneficiary.createMany({ data: beneficiaries });
+
       // console.log('this.dataProvider', this.dataProvider);
       // await this.dataProvider.saveList(beneficiaries);
 

@@ -1,242 +1,292 @@
-# RabbitMQ Worker Integration in NestJS
-
-## Overview
-
-This repository provides a robust integration for managing RabbitMQ workers in a NestJS application. The system handles message queues, batch processing, worker lifecycle management, and error handling in a scalable, flexible manner. The core components of this setup include dynamic worker registration, message processing in batches, and queue management using `amqp-connection-manager` and `amqplib`.
-
-### Key Features:
-
-- **Dynamic Worker Registration**: Register multiple workers dynamically to process different RabbitMQ queues.
-- **Batch Processing**: Process messages in batches to improve throughput and reduce overhead.
-- **Error Handling and Acknowledgment**: Ensure reliable message delivery with automatic acknowledgment and error handling.
-- **Queue Management**: Automatically assert queues and validate their configurations.
-- **Channel Prefetching**: Optimize resource usage by controlling how many messages the worker should prefetch at once.
+Below is a **detailed** technical blog post you can adapt for your own website or publishing platform. It covers all the key points and provides a thorough explanation of **why** your custom NestJS + RabbitMQ solution exists, **how** it works, and **how** others can use it in their projects.
 
 ---
 
-## Optimizations and Design Choices
+# A Custom NestJS + RabbitMQ Module for Flexible Worker-Based Processing
 
-### 1. **Dynamic Worker Registration**:
+## 1. Introduction
 
-The system uses a dynamic registration approach to add and remove workers without modifying the core logic. This flexibility allows you to scale the application by adding workers to handle different queues as needed.
+**RabbitMQ** is a powerful message broker commonly used to decouple and scale microservices. While NestJS has several RabbitMQ libraries, some advanced use-cases (like **partial-batch message consumption**, **dynamic data providers**, or **per-worker injection**) can be tricky to implement with off-the-shelf solutions.
 
-- **Code Example**:
+In this post, we’ll explore a **custom NestJS RabbitMQ module** and worker setup that handle advanced needs:
 
-  ```typescript
-  WorkerModule.register([
-    { provide: 'BeneficiaryWorker1', useClass: BeneficiaryWorker },
-    { provide: 'BeneficiaryWorker2', useClass: BeneficiaryWorker },
-  ]);
-  ```
+- **Batch-based** or **individual** message processing
+- **Dynamic module** registration of workers and their data providers
+- Automatic **DLQ (Dead Letter Queue)** handling for failed messages
+- Partial-batch **timer-based flush** for leftover items in the queue
 
-- **Benefit**: This design allows you to add new queues or workers easily, enhancing the system's flexibility and scalability.
-
-### 2. **Batch Processing**:
-
-Messages are processed in batches, reducing the overhead associated with handling messages individually. By grouping messages, batch processing optimizes throughput and decreases the number of network operations and acknowledgments.
-
-- **Code Example**:
-
-  ```typescript
-  const batch = messages.slice(i, i + batchSize);
-  await this.channelWrapper.addSetup(async (channel: ConfirmChannel) => {
-    await channel.assertQueue(queue, { durable: true });
-    channel.sendToQueue(queue, Buffer.from(JSON.stringify({ data: batch, batchSize, batchIndex: i })));
-  });
-  ```
-
-- **Benefit**: Processing multiple messages together reduces network latency and improves overall performance.
-
-### 3. **Error Handling and Acknowledgment**:
-
-The worker system ensures that if a message fails to be processed, it is requeued for retry. By using `ack` and `nack`, messages are acknowledged only when processed successfully, while failed messages can be requeued for future processing.
-
-- **Code Example**:
-
-  ```typescript
-  this.channel.ack(item.message); // Acknowledge successful processing
-  this.channel.nack(item.message, false, true); // Requeue failed messages
-  ```
-
-- **Benefit**: This guarantees reliable message delivery and minimizes message loss in case of errors.
-
-### 4. **Queue Argument Validation**:
-
-The system checks if the queue arguments match the expected configuration using `ensureQueueArguments`. If a conflict is detected, the queue is reset, or manual intervention is flagged.
-
-- **Code Example**:
-
-  ```typescript
-  const existingArgs = this.queueArguments;
-  if (JSON.stringify(existingArgs) !== JSON.stringify(this.queueArguments)) {
-    // Handle conflict and reset queue if necessary
-  }
-  ```
-
-- **Benefit**: This ensures that workers always work with the correct queue configurations, reducing the chances of misbehaving queues.
-
-### 5. **Channel Prefetching**:
-
-Prefetching is implemented to limit the number of messages fetched by a worker at once, helping manage resource usage effectively.
-
-- **Code Example**:
-
-  ```typescript
-  await this.channel.prefetch(this.defaultBatchSize); // Limit the number of messages fetched
-  ```
-
-- **Benefit**: Ensures workers are not overwhelmed with too many messages and helps distribute processing more evenly.
-
-### 6. **Queue Setup and Initialization**:
-
-Queues are set up only once during worker initialization, which reduces unnecessary reinitialization and ensures the worker can start processing immediately.
-
-- **Benefit**: Reduces startup time and ensures that workers are ready to consume messages as soon as they are launched.
+We’ll walk through the architecture, installation, usage, and how it compares to existing libraries.
 
 ---
 
-## Flow Diagram
+## 2. Why We Built a Custom RabbitMQ Solution
 
-```plaintext
-  +-------------------+        +-------------------------+
-  | Worker Module     |        | RabbitMQ Service        |
-  | (Dynamic Register)|------->| (Publish/Consume Logic) |
-  +-------------------+        +-------------------------+
-            |
-            v
-  +--------------------------+
-  | Beneficiary Worker       |
-  | (Batch Processing Logic) |
-  +--------------------------+
-            |
-            v
-  +-----------------------+
-  | Queue Management      |
-  | (Setup, Acknowledgment)|
-  +-----------------------+
-            |
-            v
-  +----------------------------+
-  | Channel Prefetching        |
-  | (Efficient Resource Use)   |
-  +----------------------------+
+Typical RabbitMQ libraries for NestJS (e.g., `@golevelup/nestjs-rabbitmq`) can handle most pub/sub needs, but we had extra requirements:
+
+1. **Worker Scalability**  
+   We wanted multiple “workers” with **batch** message processing, partial flush intervals, retries, and automatic DLQ for failed messages.
+
+2. **Per-Worker Injection**  
+   Each worker might need different data providers (e.g., a **Prisma**-based provider or an **API**-based provider). We needed **dynamic modules** to handle tokens like `PRISMA_SERVICE` or `API_URL`.
+
+3. **Advanced Queue Configuration**  
+   We wanted to keep control over **queue assertions** (max length, TTL, etc.) while still letting each worker do its own advanced logic (like partial-batch flush).
+
+Rather than hack an existing library, we decided to build from scratch using **NestJS dynamic modules** and the **`amqp-connection-manager`** library for stability.
+
+---
+
+## 3. High-Level Architecture
+
+Here’s an overview of how everything fits together:
+
+1. **AppModule**
+
+   - Imports the custom `RabbitMQModule` (which sets up RabbitMQ connections and queues).
+   - Optionally passes a “worker module” for advanced worker definitions.
+
+2. **RabbitMQModule**
+
+   - Creates a globally available AMQP connection via `amqp-connection-manager`.
+   - Declares queue definitions (e.g., `BENEFICIARY_QUEUE`).
+
+3. **WorkerModule**
+
+   - Dynamically registers **workers** (e.g., `BeneficiaryWorker1`, `BeneficiaryWorker2`) plus any needed data providers (`PRISMA_SERVICE`, `API_URL`).
+   - Each worker can have a separate or shared data provider.
+
+4. **BaseWorker**
+
+   - An abstract class each worker extends.
+   - Handles batch consumption, requeues, timed partial flush, DLQ publishing, and other advanced logic.
+
+5. **DataProviderModule**
+
+   - A separate dynamic module that can provide tokens like `PRISMA_SERVICE` or `DATA_PROVIDER`.
+   - Each worker can inject these tokens.
+
+6. **BeneficiaryWorker** (an example worker)
+   - Extends `BaseWorker`.
+   - Overwrites `processItem(...)` to handle logic for each message or batch from `BENEFICIARY_QUEUE`.
+
+Below is a simple flow:
+
+```
+AppModule
+ └─> RabbitMQModule.register(...)  // sets up AMQP_CONNECTION & queues
+      └─> WorkerModule.register(...)
+           └─> DataProviderModule (per worker or global)
+ └─> Workers (BeneficiaryWorker, etc.) each consume messages & process them
 ```
 
 ---
 
-## BaseWorker Class
+## 4. Key Features
 
-The `BaseWorker` class provides an abstract base for all workers, encapsulating the common logic for interacting with RabbitMQ. It handles message consumption, batch processing, queue setup, and error handling. This design reduces code duplication and ensures that all workers follow a consistent pattern.
+### 4.1 Dynamic Modules for Workers
 
-### Key Features of `BaseWorker`:
+Using **NestJS dynamic modules**, we can create submodules for each worker. For instance:
 
-1. **Queue Initialization**: Ensures queues are set up correctly with the required arguments.
-2. **Batch Message Consumption**: Consumes messages from queues in batches, improving throughput and reducing latency.
-3. **Error Handling**: Acknowledges or requeues messages based on whether they were successfully processed.
-4. **Worker Lifecycle Management**: Manages initialization, message consumption, and graceful shutdown of workers.
-5. **Logging**: Provides detailed logs for monitoring and troubleshooting.
+```ts
+WorkerModule.register({
+  globalDataProvider: {
+    prismaService: PrismaService, // provide PRISMA_SERVICE globally
+  },
+  workers: [
+    {
+      provide: 'BeneficiaryWorker1',
+      useClass: BeneficiaryWorker,
+      // optionally override dataProvider, apiUrl, etc.
+    },
+  ],
+});
+```
 
-#### Code Example:
+### 4.2 Partial-Batch Message Handling
 
-```typescript
-export abstract class BaseWorker<T> implements OnModuleDestroy {
-  protected readonly logger = new Logger(this.constructor.name);
-  private channel: ConfirmChannel;
-  private static workerCount = 0;
-  private readonly workerId: number;
-  private readonly queueName: string;
+- **`BaseWorker`** collects messages in an array (`batch`) until either:
+  1. The **batch** hits a certain size (`defaultBatchSize`), or
+  2. We’re in **individual** mode (ack each message immediately), or
+  3. A **timer** flushes partial batches every X seconds if `acknowledgeMode === 'batch'`.
 
-  constructor(protected readonly queueUtilsService: QueueUtilsService, queueName: string, private readonly defaultBatchSize = 10, private readonly acknowledgeMode: 'individual' | 'batch' = 'individual', private readonly amqpConnection: any, private readonly queueArguments: RabbitMQModuleOptions['queues'][0]['options']['arguments'] = {}) {
-    this.queueName = queueName;
-    BaseWorker.workerCount++;
-    this.workerId = BaseWorker.workerCount;
-    this.logger.log(`${this.queueName} - Worker ID: ${this.workerId} created.`);
+### 4.3 Automatic DLQ (Dead Letter Queue)
+
+- After up to 3 retries, if a message fails processing, it’s published to `dead_letter_queue`.
+
+### 4.4 Data Provider Injection
+
+- We can inject `PRISMA_SERVICE` for DB-based logic or `API_URL` for an HTTP-based provider.
+- This per-worker approach is especially helpful for multi-tenant or multi-service setups.
+
+### 4.5 Worker Reusability
+
+- We can define multiple workers (e.g., `'BeneficiaryWorker1'`, `'BeneficiaryWorker2'`) each pointing to the same or different queue definitions.
+- The logic that is in `BaseWorker` can be extended in each worker class, making code DRY and consistent.
+
+---
+
+## 5. Installation and Setup
+
+Assume we publish this code as an npm package (e.g., `@your-org/nest-rabbitmq`). Then:
+
+```bash
+npm install @your-org/nest-rabbitmq
+```
+
+In your **`.env`** or environment, set:
+
+```
+RABBIT_MQ_URL=amqp://guest:guest@localhost
+```
+
+### 5.1 Minimal `AppModule` Example
+
+```ts
+// app.module.ts
+
+@Module({
+  imports: [
+    RabbitMQModule.register({
+      urls: [process.env.RABBIT_MQ_URL],
+      ampqProviderName: 'AMQP_CONNECTION',
+      queues: [{ name: 'BENEFICIARY_QUEUE', durable: true }],
+      workerModuleProvider: WorkerModule.register({
+        globalDataProvider: {
+          prismaService: PrismaService, // share Prisma across workers
+        },
+        workers: [
+          {
+            provide: 'BeneficiaryWorker1',
+            useClass: BeneficiaryWorker,
+          },
+        ],
+      }),
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+### 5.2 Example Worker: `BeneficiaryWorker`
+
+```ts
+// beneficiary.rabbitmq.worker.ts
+
+@Injectable()
+export class BeneficiaryWorker extends BaseWorker<any> {
+  constructor(queueUtilsService: QueueUtilsService, @Inject('AMQP_CONNECTION') amqpConnection: any) {
+    // passing 'BENEFICIARY_QUEUE', defaultBatchSize = 10, mode='batch'
+    super(queueUtilsService, 'BENEFICIARY_QUEUE', 10, 'batch', amqpConnection);
   }
 
-  async initializeWorker(channel: ConfirmChannel): Promise<void> {
-    this.channel = channel;
-    this.channel.on('close', async () => {
-      this.logger.warn(`${this.queueName} - Worker ID: ${this.workerId} - Channel closed. Reinitializing...`);
-    });
-
-    try {
-      this.logger.log(`${this.queueName} - Worker ID: ${this.workerId} - Setting prefetch to ${this.defaultBatchSize}`);
-      await this.channel.prefetch(this.defaultBatchSize);
-
-      const queueArgsMatch = await this.ensureQueueArguments();
-      if (!queueArgsMatch) return;
-
-      let batch: BatchItem<T>[] = [];
-      await this.channel.consume(this.queueName, async (message) => {
-        if (message) {
-          const content = JSON.parse(message.content.toString());
-          batch.push({ data: content, message });
-          if (batch.length >= this.defaultBatchSize || this.acknowledgeMode === 'individual') {
-            const currentBatch = [...batch];
-            batch = [];
-            await this.processBatch(currentBatch);
-          }
-        }
-      });
-    } catch (error) {
-      this.logger.error(`${this.queueName} - Worker ID: ${this.workerId} - Error:`, error);
+  protected async processItem(items: any[]) {
+    // Custom logic per item/batch
+    for (const item of items) {
+      console.log('Processing beneficiary item:', item);
+      // e.g. call Prisma or an API-based data provider
+      // ...
     }
-  }
-
-  private async ensureQueueArguments(): Promise<boolean> {
-    try {
-      const existingArgs = this.queueArguments;
-      if (JSON.stringify(existingArgs) !== JSON.stringify(this.queueArguments)) {
-        this.logger.error(`${this.queueName} - Worker ID: ${this.workerId} - Queue arguments conflict detected.`);
-        return false;
-      }
-      return true;
-    } catch (error) {
-      this.logger.error(`Error ensuring queue arguments:`, error);
-      return false;
-    }
-  }
-
-  private async processBatch(batch: BatchItem<T>[]): Promise<void> {
-    for (const item of batch) {
-      try {
-        await this.processItem([item.data]);
-        this.channel.ack(item.message);
-      } catch (error) {
-        this.channel.nack(item.message, false, true);
-      }
-    }
-  }
-
-  protected abstract processItem(items: T | T[]): Promise<void>;
-
-  onModuleDestroy() {
-    BaseWorker.workerCount--;
-    this.logger.warn(`${this.queueName} - Worker ID: ${this.workerId} shutting down.`);
   }
 }
 ```
 
 ---
 
-## Pros and Cons of the Methods Used
+## 6. Usage & Examples
 
-### Pros:
+### 6.1 Publishing Messages
 
-- **Scalability**: The dynamic worker registration allows the system to scale by adding or removing workers and queues without modifying the core logic.
-- **Modular Design**: `BaseWorker` reduces redundancy by abstracting common logic, making it easier to maintain and extend.
-- **Fault Tolerance**: Automatic error handling and message requeuing ensure reliable message delivery.
-- **Efficient Resource Usage**: Prefetching and batch processing improve throughput and reduce network overhead.
+Use the **`RabbitMQService`** to push messages:
 
-### Cons:
+```ts
+// in some service or controller
+constructor(private readonly rabbitMQService: RabbitMQService) {}
 
-- **Complexity**: The system’s flexibility and dynamic behavior introduce complexity, particularly for developers unfamiliar with the architecture.
-- **Message Duplication**: If a worker crashes before acknowledging a message, it could result in message duplication unless proper deduplication is implemented.
-- **Limited Control over Worker Behavior**: The batch processing mechanism might not be suitable for all use cases where individual message processing is required.
-- **Hard-Coded Queue Setup**: The queue setup is tightly coupled to the system, which might cause issues when needing more complex or dynamic configurations.
+async createBeneficiary(beneficiary: any) {
+  await this.rabbitMQService.publishToQueue('BENEFICIARY_QUEUE', beneficiary);
+  console.log('Beneficiary data pushed to queue');
+}
+```
+
+### 6.2 Automatic Setup of Queues
+
+Because you passed the queue definitions to `RabbitMQModule`:
+
+```ts
+{
+  name: 'BENEFICIARY_QUEUE',
+  durable: true,
+  options: {
+    // optional queue arguments
+  },
+}
+```
+
+The `RabbitMQService` automatically does `channel.assertQueue(...)` for each queue on startup.
+
+### 6.3 Data Providers
+
+If you want an **API**-based provider, e.g.:
+
+```ts
+@Global()
+@Injectable()
+export class BeneficiaryApiProvider implements IDataProvider {
+  constructor(@Inject('API_URL') private readonly apiUrl: string) {
+    // create axios instance, etc.
+  }
+  // ...
+}
+```
+
+Just pass it via `DataProviderModule.register()` or in the `WorkerModule`. Then in your worker, you can `@Inject(DATA_PROVIDER)` to get the instance.
 
 ---
 
-## Conclusion
+## 7. Advanced Topics
 
-This RabbitMQ worker integration in NestJS provides an efficient and scalable solution for handling message queues, with robust features like batch processing, error handling, and dynamic worker registration. By leveraging the `BaseWorker` class, the system maintains flexibility, scalability, and ease of maintenance. However, considerations regarding complexity and potential message duplication should be made depending on the use case.
+1. **Timer-Based Partial Flush**  
+   If you’re in `'batch'` mode, `BaseWorker` sets a flush timer. If the queue has < `defaultBatchSize` items for a while, it’ll still process them after the timer triggers.
+
+2. **Retries and DLQ**  
+   Each message can retry up to 3 times. On final failure, it’s published to `'dead_letter_queue'` by default. You can override `publishToDLQ(...)` in your worker if you want to route it differently.
+
+3. **Multiple Workers with Different Data Providers**
+   - Worker1 might have `BeneficiaryPrismaProvider`, Worker2 might have `BeneficiaryApiProvider`.
+   - `WorkerModule.register(...)` can pass a different `workerDataProvider` or `prismaService` for each.
+
+---
+
+## 8. Comparisons with Existing NestJS RabbitMQ Modules
+
+**When This Custom Approach Is Better:**
+
+- **Complex Per-Worker Logic**: If you need partial-batch flush, re-tries, DLQ logic baked into the worker, the built-in `BaseWorker` pattern is flexible.
+- **Multiple Data Providers**: You can dynamically inject `API_URL` or `PRISMA_SERVICE` in different combos.
+- **Advanced** Multi-Module Setup: The “data provider module” approach ensures each worker can have unique config.
+
+**When Existing Libraries Are Simpler**:
+
+- If you only need a straightforward approach to consumer/producer logic and don’t require partial-batch or advanced injection, existing libraries like `@golevelup/nestjs-rabbitmq` might be faster to set up.
+- If you want a decorator-based approach (like `@RabbitSubscribe()`), you might prefer a library that hides more of the details.
+
+---
+
+## 9. Conclusion & Next Steps
+
+In this post, we demonstrated a **custom NestJS + RabbitMQ** architecture that solves advanced worker-related use cases:
+
+- **Partial-batch** or **individual** message consumption.
+- Automatic **DLQ** logic after multiple retries.
+- **Per-worker** data providers using dynamic modules.
+- Timer-based flushing for leftover messages in batch mode.
+
+### Where to Go from Here
+
+- **Try It**: Check out the [GitHub Repository](https://github.com/argahv/nest-rabbitmq) for the full code, examples, and instructions.
+- **Contribute**: If you find an issue or want a feature, open a PR or issue.
+- **Customization**: Extend `BaseWorker` to add your own logic (e.g., scheduling, multiple queues in one worker, etc.).
+
+**We hope** this helps devs needing advanced NestJS + RabbitMQ functionality beyond what typical libraries provide. Feel free to drop a comment or open an issue if you have questions or suggestions!
+
+Thanks for reading, and happy queueing!
