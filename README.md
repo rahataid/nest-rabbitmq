@@ -272,10 +272,104 @@ Just pass it via `DataProviderModule.register()` or in the `WorkerModule`. Then 
 
 In this post, we demonstrated a **custom NestJS + RabbitMQ** architecture that solves advanced worker-related use cases:
 
-- **Partial-batch** or **individual** message consumption.
-- Automatic **DLQ** logic after multiple retries.
-- **Per-worker** data providers using dynamic modules.
-- Timer-based flushing for leftover messages in batch mode.
+## **Advanced Worker-Related To-Do List**
+
+1. **Partial-Batch Logic**
+
+   - [ ] Implement a timer-based flush for leftover messages.
+   - [ ] Expose a config option `acknowledgeMode` (`'individual' | 'batch'`) in your worker constructor.
+   - [ ] Add logic to track accumulated messages (`batch[]`) until either:
+     - the batch is full (`>= defaultBatchSize`), or
+     - the timer triggers (for partial flush).
+   - [ ] Provide a method (`flushBatch()`) to easily force a batch flush programmatically, if needed.
+
+2. **Dynamic Worker Injection**
+
+   - [ ] In your `WorkerModule.register()`, allow each worker to specify a `dataProvider` or tokens like `PRISMA_SERVICE`, `API_URL`.
+   - [ ] For each worker:
+     - If `workerDataProvider` is given, build a new `DataProviderModule` instance.
+     - Otherwise, fallback to a global or default data provider.
+   - [ ] Ensure the worker can `@Inject(DATA_PROVIDER)` or `@Inject(PRISMA_SERVICE)` in its constructor if requested.
+
+3. **Multiple Retries & DLQ**
+
+   - [ ] Decide on a max retry count (e.g., 3).
+   - [ ] In your `processBatch()`, handle per-message retry logic:
+     - [ ] If a message fails, increment `retryCount`.
+     - [ ] If `retryCount >= maxRetries`, route the message to `dead_letter_queue`.
+   - [ ] Provide a method `publishToDLQ()` that your worker can override for custom DLQ routing.
+   - [ ] Log warnings when messages reach final failures.
+
+4. **Concurrency & Prefetch**
+
+   - [ ] In the base worker (`BaseWorker`), expose a config for `prefetchCount`.
+   - [ ] In `initializeWorker()`, call `channel.prefetch(prefetchCount)`.
+   - [ ] Consider letting each worker set its own concurrency or share a global concurrency policy.
+
+5. **Timed Flush & Exponential Backoff**
+
+   - [ ] For partial-batch flush, define a `batchFlushInterval` in your worker (default 5 seconds).
+   - [ ] If an item fails, implement exponential backoff (e.g., wait `2^attempt * 1000` ms) before retrying or acknowledging failure.
+
+6. **Configurable Requeue vs. DLQ**
+
+   - [ ] Let the worker decide whether to immediately requeue or to do a slow requeue (with a delay).
+   - [ ] Provide a helper function for scheduling a delayed requeue, if desired.
+
+7. **Per-Worker Logging & Monitoring**
+
+   - [ ] Add logs that include the worker name/ID, batch sizes, flush intervals, etc.
+   - [ ] Optionally expose a metrics interface (e.g., to track messages processed, failures, DLQ counts) for each worker.
+
+8. **Graceful Shutdown**
+
+   - [ ] In `onModuleDestroy()`, stop the flush timer (`clearInterval`) if in batch mode.
+   - [ ] Wait for in-progress batches to finish before shutting down.
+   - [ ] Close channels & the AMQP connection after all items are processed or after a configurable grace period.
+
+9. **Customizable Worker**
+
+   - [ ] Provide an abstract `processItem(items: T | T[])` method that the user **must** override to handle actual domain logic.
+   - [ ] Consider hooks like `beforeBatch(items: T[])`, `afterBatch(items: T[])` to allow advanced customization (e.g., stats or logs).
+
+10. **Advanced Data Providers**
+
+- [ ] Support injection tokens for multiple providers (Prisma vs. HTTP API).
+- [ ] Provide a fallback or default data provider if none is specified.
+- [ ] Document how to create a custom provider class that implements `IDataProvider` or a similar interface.
+
+11. **Documentation & Examples**
+
+- [ ] Document each advanced feature (partial-batch flush, timed flush, dynamic injection, etc.) in the README or docs.
+- [ ] Create a small example repo showing:
+  - A queue definition
+  - A custom worker with partial-batch logic
+  - Prisma or API-based data providers.
+
+12. **Testing & CI**
+
+- [ ] Write unit tests for partial-batch logic (simulate fewer items than `defaultBatchSize` & flush on timer).
+- [ ] Test DLQ logic by forcing message failures.
+- [ ] Ensure concurrency (prefetch) tests handle multiple messages in parallel.
+- [ ] Optionally run integration tests with a local RabbitMQ container (e.g., Docker) in CI.
+
+13. **Versioning & Maintenance**
+
+- [ ] Use semantic versioning to manage changes in worker logic or data provider injection.
+- [ ] Provide a CHANGELOG with each release if you publish as an open-source library.
+- [ ] Keep the code modular so advanced worker logic is separated from the basic core module.
+
+---
+
+## **Conclusion**
+
+Completing the tasks in this **to-do list** will enable **advanced worker-related use cases** such as:
+
+- **Partial-batch** or **individual** acknowledgment
+- **Retry** attempts with **exponential backoff** and **DLQ** fallback
+- **Concurrency** control with **prefetch** settings
+- **Dynamic injection** of multiple data providers
+- **Timed flush** for leftover batch items
 
 ### Where to Go from Here
 
