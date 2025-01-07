@@ -1,7 +1,3 @@
-Below is a **detailed** technical blog post you can adapt for your own website or publishing platform. It covers all the key points and provides a thorough explanation of **why** your custom NestJS + RabbitMQ solution exists, **how** it works, and **how** others can use it in their projects.
-
----
-
 # A Custom NestJS + RabbitMQ Module for Flexible Worker-Based Processing
 
 ## 1. Introduction
