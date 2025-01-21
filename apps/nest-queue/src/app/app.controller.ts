@@ -16,7 +16,7 @@ export class AppController {
       name: 'John Doe',
       email: '',
     };
-    const dataBatched = Array(10000)
+    const dataBatched = Array(1000)
       .fill(data)
       .map((item, index) => ({
         name: item.name + index,

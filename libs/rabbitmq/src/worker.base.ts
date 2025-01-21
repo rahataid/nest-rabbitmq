@@ -11,38 +11,64 @@ export interface BatchItem<T> {
 @Injectable()
 export abstract class BaseWorker<T> implements OnModuleDestroy {
   protected readonly logger = new Logger(this.constructor.name);
+
+  // Channels
   private channel: ConfirmChannel;
   private dlqChannel: ConfirmChannel | undefined;
+
+  // Worker ID Tracking
   private static workerCount = 0;
   private readonly workerId: number;
   private readonly queueName: string;
 
-  // New properties for partial-batch flush
+  // Batching logic
   private batchFlushTimer: NodeJS.Timeout | null = null;
-  private readonly FLUSH_INTERVAL_MS = 5000; // e.g., flush every 5 seconds
+  private readonly FLUSH_INTERVAL_MS = 5000; // 5 seconds
+  private readonly defaultBatchSize: number; // e.g., 10
+  private readonly acknowledgeMode: 'individual' | 'batch';
+
+  // AMQP and Queue arguments
+  /**
+   * IMPORTANT: We are no longer automatically closing `amqpConnection` unless we truly
+   * want to shut down the entire application. That way, the worker can stay alive.
+   */
+  private readonly amqpConnection: any;
+  private readonly queueArguments: RabbitMQModuleOptions['queues'][0]['options']['arguments'];
 
   constructor(
     protected readonly queueUtilsService: QueueUtilsService,
     queueName: string,
-    private readonly defaultBatchSize = 10,
-    private readonly acknowledgeMode: 'individual' | 'batch' = 'individual',
-    private readonly amqpConnection: any,
-    private readonly queueArguments: RabbitMQModuleOptions['queues'][0]['options']['arguments'] = {}
+    defaultBatchSize = 10,
+    acknowledgeMode: 'individual' | 'batch' = 'individual',
+    amqpConnection?: any,
+    queueArguments: RabbitMQModuleOptions['queues'][0]['options']['arguments'] = {}
   ) {
     this.queueName = queueName;
+    this.defaultBatchSize = defaultBatchSize;
+    this.acknowledgeMode = acknowledgeMode;
+    this.amqpConnection = amqpConnection;
+    this.queueArguments = queueArguments;
+
     BaseWorker.workerCount++;
     this.workerId = BaseWorker.workerCount;
+
     this.logger.log(
       `${this.queueName} - Worker instance created. Worker ID: ${this.workerId}. Total workers: ${BaseWorker.workerCount}`
     );
   }
 
+  /**
+   * Call this method once you have a ConfirmChannel ready (e.g., after connection).
+   */
   async initializeWorker(channel: ConfirmChannel): Promise<void> {
     this.channel = channel;
+
+    // Setup event listeners on the channel
     this.channel.on('close', async () => {
       this.logger.warn(
-        `${this.queueName} - Worker ID: ${this.workerId} - Channel closed. Reinitializing...`
+        `${this.queueName} - Worker ID: ${this.workerId} - Channel closed. Consider reinitializing if needed.`
       );
+      // Optional: you could reinitialize here if you want the worker to reconnect automatically.
     });
 
     this.channel.on('error', (error) => {
@@ -53,66 +79,68 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
     });
 
     try {
+      // Set an optimal prefetch count
       const prefetchCount = this.calculateOptimalPrefetch();
       this.logger.log(
         `${this.queueName} - Worker ID: ${this.workerId} - Setting prefetch count to ${prefetchCount}`
       );
       await this.channel.prefetch(prefetchCount);
 
+      // Ensure queue arguments match or assert a new queue if needed
       const queueArgsMatch = await this.ensureQueueArguments();
       if (!queueArgsMatch) {
         this.logger.error(
-          `${this.queueName} - Worker ID: ${this.workerId} - Queue arguments conflict detected.`
+          `${this.queueName} - Worker ID: ${this.workerId} - Queue arguments conflict detected. Worker not consuming.`
         );
         return;
       }
-
       this.logger.log(
         `${this.queueName} - Worker ID: ${this.workerId} - Queue is ready.`
       );
 
-      // Initialize a separate channel for the DLQ
+      // Initialize a separate channel for the DLQ (if needed)
       this.dlqChannel = await this.amqpConnection.createChannel();
       await this.dlqChannel.assertQueue('dead_letter_queue', { durable: true });
 
+      // Shared in-memory batch array
       let batch: BatchItem<T>[] = [];
 
+      // Start consuming messages
       await this.channel.consume(this.queueName, async (message) => {
-        if (message) {
-          const content = JSON.parse(message.content.toString());
-          batch.push({ data: content, message });
+        if (!message) {
+          return;
+        }
 
+        const content: T = JSON.parse(message.content.toString());
+        batch.push({ data: content, message });
+
+        this.logger.log(
+          `${this.queueName} - Worker ID: ${
+            this.workerId
+          } - Received message: ${JSON.stringify(content).slice(0, 100)}...`
+        );
+
+        // If we're in 'individual' mode, process each message immediately,
+        // OR if we've reached the batch size, process now.
+        if (
+          this.acknowledgeMode === 'individual' ||
+          batch.length >= this.defaultBatchSize
+        ) {
+          const currentBatch = [...batch];
+          batch = []; // Clear the batch array
           this.logger.log(
-            `${this.queueName} - Worker ID: ${
-              this.workerId
-            } - Received message: ${JSON.stringify(content).slice(0, 100)}...`
+            `${this.queueName} - Worker ID: ${this.workerId} - Processing batch of size: ${currentBatch.length}.`
           );
-
-          // If the batch reaches defaultBatchSize OR we are in 'individual' mode, flush immediately
-          if (
-            batch.length >= this.defaultBatchSize ||
-            this.acknowledgeMode === 'individual'
-          ) {
-            const currentBatch = [...batch];
-            batch = [];
-            this.logger.log(
-              `${this.queueName} - Worker ID: ${this.workerId} - Processing batch of size: ${currentBatch.length}.`
-            );
-            await this.processBatch(currentBatch);
-          }
+          await this.processBatch(currentBatch);
         }
       });
 
-      /**
-       * ONLY if we are in 'batch' mode, set up a timer to flush partial batches.
-       * If 'individual' mode, we already process each message immediately.
-       */
+      // If in 'batch' mode, we rely on a flush timer to handle partial batches
       if (this.acknowledgeMode === 'batch') {
         this.batchFlushTimer = setInterval(async () => {
           if (batch.length > 0) {
-            // Flush the partial batch
             const currentBatch = [...batch];
-            batch = [];
+            batch = []; // Clear the batch
             this.logger.log(
               `${this.queueName} - Worker ID: ${this.workerId} - Timer flush: processing partial batch of size ${currentBatch.length}.`
             );
@@ -132,15 +160,22 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
     }
   }
 
+  /**
+   * Calculates an optimal prefetch. Customize as you see fit.
+   */
   private calculateOptimalPrefetch(): number {
+    const fallback = 20;
     const prefetch = Math.max(
       10,
-      Math.floor(Number(process.env['MAX_PREFETCH']) || 20)
+      Math.floor(Number(process.env['MAX_PREFETCH']) || fallback)
     );
     this.logger.log(`Optimal prefetch count calculated: ${prefetch}`);
     return prefetch;
   }
 
+  /**
+   * Ensures the queue arguments match what's provided, or asserts a new queue if missing.
+   */
   private async ensureQueueArguments(): Promise<boolean> {
     try {
       const existingArgs = this.queueArguments;
@@ -155,10 +190,9 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
             existingArgs
           )}, Provided=${JSON.stringify(this.queueArguments)}`
         );
-
         if (process.env['FORCE_QUEUE_RESET'] === 'true') {
           this.logger.warn(
-            `${this.queueName} - Worker ID: ${this.workerId} - Force resetting queue.`
+            `${this.queueName} - Worker ID: ${this.workerId} - Force resetting queue due to argument mismatch.`
           );
           await this.channel.deleteQueue(this.queueName);
           await this.channel.assertQueue(this.queueName, {
@@ -167,7 +201,6 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
           });
           return true;
         }
-
         return false;
       }
 
@@ -187,6 +220,9 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
     }
   }
 
+  /**
+   * Processes the entire batch. Each message item gets its own retry logic.
+   */
   private async processBatch(batch: BatchItem<T>[]): Promise<void> {
     for (const item of batch) {
       let retryCount = 0;
@@ -195,13 +231,15 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
 
       while (retryCount < maxRetries) {
         try {
+          // Concrete class implements the actual data logic
           await this.processItem([item.data]);
-          this.channel.ack(item.message); // Acknowledge successful processing
+
+          this.channel.ack(item.message);
           this.logger.log(
             `${this.queueName} - Worker ID: ${this.workerId} - Message processed and acknowledged.`
           );
           success = true;
-          break; // Exit the retry loop on success
+          break;
         } catch (error) {
           retryCount++;
           this.logger.error(
@@ -215,33 +253,44 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
             );
             try {
               await this.publishToDLQ(item);
-              this.channel.ack(item.message); // Acknowledge to avoid re-processing
+              this.channel.ack(item.message); // Avoid reprocessing
             } catch (dlqError) {
               this.logger.error(
-                `${this.queueName} - Worker ID: ${this.workerId} - Failed to publish to DLQ. Message will remain unacknowledged.`,
+                `${this.queueName} - Worker ID: ${this.workerId} - Failed to publish to DLQ. Message remains unacknowledged.`,
                 dlqError
               );
             }
           } else {
-            // Exponential backoff before next retry
-            await new Promise((resolve) =>
-              setTimeout(resolve, Math.pow(2, retryCount) * 1000)
+            // Exponential backoff
+            const backoffMs = Math.pow(2, retryCount) * 1000;
+            this.logger.warn(
+              `${this.queueName} - Worker ID: ${this.workerId} - Waiting ${backoffMs} ms before retry.`
             );
+            await new Promise((resolve) => setTimeout(resolve, backoffMs));
           }
         }
       }
 
       if (!success && retryCount >= maxRetries) {
         this.logger.warn(
-          `${this.queueName} - Worker ID: ${this.workerId} - Message failed after retries and DLQ attempt.`
+          `${this.queueName} - Worker ID: ${this.workerId} - Message permanently failed after retries.`
         );
       }
     }
   }
 
+  /**
+   * Publishes a failed item to a DLQ (dead_letter_queue).
+   */
   private async publishToDLQ(item: BatchItem<T>) {
+    if (!this.dlqChannel) {
+      this.logger.error(
+        `${this.queueName} - Worker ID: ${this.workerId} - DLQ channel is not set. Cannot publish to DLQ.`
+      );
+      throw new Error('DLQ channel is not available.');
+    }
     try {
-      await this.dlqChannel.sendToQueue(
+      this.dlqChannel.sendToQueue(
         'dead_letter_queue',
         Buffer.from(JSON.stringify(item.data))
       );
@@ -258,24 +307,28 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
   }
 
   /**
-   * Implement this in the concrete worker class to do
-   * actual processing for items.
+   * Concrete classes must implement this to perform actual business logic.
    */
-  protected abstract processItem(items: T | T[]): Promise<void>;
+  protected abstract processItem(items: T[]): Promise<void>;
 
+  /**
+   * Lifecycle hook to clean up. Called when the NestJS module is destroyed.
+   * We ONLY close channels here, not the entire connection, to keep the app alive.
+   */
   onModuleDestroy() {
     BaseWorker.workerCount--;
     this.logger.warn(
       `${this.queueName} - Worker ID: ${this.workerId} shutting down. Remaining workers: ${BaseWorker.workerCount}`
     );
 
-    // Clear flush timer if we set one
+    // Clear flush timer if we have one
     if (this.batchFlushTimer) {
       clearInterval(this.batchFlushTimer);
       this.batchFlushTimer = null;
       this.logger.log(`Batch flush timer for worker ${this.workerId} cleared.`);
     }
 
+    // Close the channels if the app truly shuts down
     if (this.channel) {
       this.channel.close();
       this.logger.log(`Channel for worker ${this.workerId} closed.`);
@@ -286,9 +339,14 @@ export abstract class BaseWorker<T> implements OnModuleDestroy {
       this.logger.log(`DLQ channel for worker ${this.workerId} closed.`);
     }
 
-    if (this.amqpConnection) {
-      this.amqpConnection.close();
-      this.logger.log(`Connection for worker ${this.workerId} closed.`);
-    }
+    /**
+     * COMMENTED OUT or REMOVED:
+     * We do NOT close the amqpConnection here,
+     * because that would kill the connection for all workers or re-publishers.
+     */
+    // if (this.amqpConnection) {
+    //   this.amqpConnection.close();
+    //   this.logger.log(`Connection for worker ${this.workerId} closed.`);
+    // }
   }
 }

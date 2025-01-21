@@ -9,8 +9,9 @@ export class RabbitMQService {
   private channelWrapper: ChannelWrapper;
 
   constructor(
-    @Inject('AMQP_CONNECTION') private readonly connection: AmqpConnectionManager,
-    @Inject('QUEUE_NAMES') private readonly queuesToSetup: any[],
+    @Inject('AMQP_CONNECTION')
+    private readonly connection: AmqpConnectionManager,
+    @Inject('QUEUE_NAMES') private readonly queuesToSetup: any[]
   ) {
     this.channelWrapper = this.connection.createChannel({
       json: true,
@@ -27,7 +28,10 @@ export class RabbitMQService {
   // Publish a single message to a queue
   async publishToQueue(queue: string, message: any): Promise<void> {
     try {
-      await this.channelWrapper.sendToQueue(queue, Buffer.from(JSON.stringify(message)));
+      await this.channelWrapper.sendToQueue(
+        queue,
+        Buffer.from(JSON.stringify(message))
+      );
       this.logger.log(`Message published to queue: ${queue}`);
     } catch (error) {
       this.logger.error(`Failed to publish message to queue ${queue}:`, error);
@@ -36,38 +40,51 @@ export class RabbitMQService {
   }
 
   // Publish messages in batches to a queue
-  async publishBatchToQueue(queue: string, messages: any[], batchSize = 10): Promise<void> {
-    const queueOptions = this.queuesToSetup.find(q => q.name === queue)?.options;
+  async publishBatchToQueue(
+    queue: string,
+    messages: any[],
+    batchSize = 10
+  ): Promise<void> {
+    const queueOptions = this.queuesToSetup.find(
+      (q) => q.name === queue
+    )?.options;
     console.log('queueOptions', queueOptions);
     try {
       for (let i = 0; i < messages.length; i += batchSize) {
         const batch = messages.slice(i, i + batchSize);
         try {
-          await this.channelWrapper.addSetup(async (channel: ConfirmChannel) => {
-            await channel.assertQueue(queue, { durable: true });
-            batch.forEach(msg => {
-              channel.sendToQueue(
-                queue,
-                Buffer.from(JSON.stringify({ data: msg, batchSize, batchIndex: i })),
-                {
-                  persistent: true,
-                  ...queueOptions,
-                },
-              );
-            });
-          });
+          await this.channelWrapper.addSetup(
+            async (channel: ConfirmChannel) => {
+              await channel.assertQueue(queue, { durable: true });
+              batch.forEach((msg) => {
+                channel.sendToQueue(
+                  queue,
+                  Buffer.from(
+                    JSON.stringify({ data: msg, batchSize, batchIndex: i })
+                  ),
+                  {
+                    persistent: true,
+                    ...queueOptions,
+                  }
+                );
+              });
+            }
+          );
         } catch (error) {
-          this.logger.error(`Failed to publish batch to queue ${queue}:`, error);
+          this.logger.error(
+            `Failed to publish batch to queue ${queue}:`,
+            error
+          );
         }
       }
     } catch (error) {
       this.logger.error(`Failed to publish batch to queue ${queue}:`, error);
     } finally {
       this.logger.log(
-        `Total batch at the size of ${batchSize} published to queue ${queue}. Total messages: ${messages.length}  `,
+        `Total batch at the size of ${batchSize} published to queue ${queue}. Total messages: ${messages.length}  `
       );
       this.logger.log(`Closing RabbitMQ channel for queue ${queue}`);
-      this.channelWrapper.close();
+      // this.channelWrapper.close();
     }
   }
 }
